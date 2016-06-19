@@ -1,13 +1,12 @@
 [package]
 name = "hotswap"
 version = "0.1.0"
+authors = ["Ian Ornelas <ian.orn@gmail.com>"]
 
 [lib]
 name = "hotswap"
 plugin = true
 
 [dependencies]
-aster = "*"
-
-[dependencies.lazy_static]
-git = "https://github.com/rust-lang-nursery/lazy-static.rs"
+aster = "0.18.*"
+lazy_static = "0.2.*"
