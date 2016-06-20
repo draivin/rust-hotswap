@@ -10,7 +10,7 @@ extern crate lazy_static;
 use rustc_plugin::registry::Registry;
 
 use syntax::abi::Abi;
-use syntax::ast::{Block, Expr, FnDecl, FunctionRetTy, Ident, Item, ItemKind, MetaItem,
+use syntax::ast::{Attribute, Block, Expr, FnDecl, FunctionRetTy, Ident, Item, ItemKind, MetaItem,
                   MetaItemKind, Mod, Mutability, PatKind, Stmt, TokenTree, Ty, Visibility};
 use syntax::codemap::{self, Span};
 use syntax::ext::base::{Annotatable, ExtCtxt, MacEager, MacResult};
@@ -58,9 +58,14 @@ fn expand_header(cx: &mut ExtCtxt, _: Span, _: &MetaItem, annotatable: Annotatab
                 _ => expand_lib_mod(cx, m, &mut hotswap_data),
             };
 
+            let new_attrs = match crate_type().as_ref() {
+                "dylib" => expand_lib_attrs(cx, &item.attrs),
+                _ => item.attrs.clone(),
+            };
+
             Annotatable::Item(cx.item(item.span,
                                       item.ident,
-                                      item.attrs.clone(),
+                                      new_attrs,
                                       ItemKind::Mod(Mod {
                                           inner: m.inner,
                                           items: new_mod_items,
@@ -224,6 +229,14 @@ fn crate_name() -> String {
     rustc_arg("--crate-name")
 }
 
+// Ignore dead code in the lib build, probably there will be a lot of it
+// starting at the `main` function.
+fn expand_lib_attrs(cx: &mut ExtCtxt, attrs: &Vec<Attribute>) -> Vec<Attribute> {
+    let mut new_attrs = attrs.clone();
+    new_attrs.insert(0, quote_attr!(cx, #![allow(dead_code)]));
+    new_attrs
+}
+
 // The lib code marks the hotswapped functions as `no_mangle` and
 // exports them.
 fn expand_lib_mod(cx: &mut ExtCtxt, m: &Mod, _: &mut HotswapData) -> Vec<P<Item>> {
@@ -244,12 +257,11 @@ fn expand_lib_mod(cx: &mut ExtCtxt, m: &Mod, _: &mut HotswapData) -> Vec<P<Item>
     new_items
 }
 
-fn expand_lib_fn(_: &mut ExtCtxt, item: &Item) -> P<Item> {
+fn expand_lib_fn(cx: &mut ExtCtxt, item: &Item) -> P<Item> {
     let mut new_item = item.clone();
 
     if let &mut ItemKind::Fn(_, _, _, ref mut abi, _, _) = &mut new_item.node {
-        let builder = aster::AstBuilder::new();
-        let attr = builder.attr().word(intern("no_mangle"));
+        let attr = quote_attr!(cx, #![no_mangle]);
 
         new_item.attrs.push(attr);
 
