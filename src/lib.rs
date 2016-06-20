@@ -9,23 +9,24 @@ extern crate lazy_static;
 use rustc_plugin::registry::Registry;
 
 use syntax::abi::Abi;
-use syntax::ast::{Attribute, Block, FnDecl, FunctionRetTy, Ident, Item, ItemKind, MetaItem,
-                  MetaItemKind, Mod, PatKind, TokenTree, Ty, Visibility};
-use syntax::codemap::{self, Span};
+use syntax::ast::{Attribute, Block, FnDecl, Ident, Item, ItemKind, MetaItem, Mod, TokenTree, Visibility};
+use syntax::codemap::Span;
 use syntax::ext::base::{Annotatable, ExtCtxt, TTMacroExpander, MacEager, MacResult, MultiItemModifier};
 use syntax::ext::base::SyntaxExtension::{MultiModifier, NormalTT};
 use syntax::ext::build::AstBuilder;
-use syntax::ext::quote::rt::ToTokens;
 use syntax::feature_gate::AttributeType;
-use syntax::parse::token::{self, intern};
+use syntax::parse::token::intern;
 use syntax::ptr::P;
 
-use std::collections::HashSet;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
+
 use std::mem;
 use std::ops::DerefMut;
 
+mod util;
+use util::syntax::*;
+use util::rustc::*;
 
 // The plugin works by changing the function code depending on the
 // build type(bin or lib), when building a lib, it exports all
@@ -41,16 +42,14 @@ use std::ops::DerefMut;
 pub fn registrar(reg: &mut Registry) {
     let data = Rc::new(RefCell::new(Vec::new()));
 
-    let header_extension = HotswapHeaderExtension {
-        data: data.clone(),
-    };
+    let header_extension = HotswapHeaderExtension { data: data.clone() };
+    let macro_extension = HotswapMacroExtension { data: data.clone() };
 
-    let macro_extension = HotswapMacroExtension {
-        data: data.clone(),
-    };
+    reg.register_syntax_extension(intern("hotswap_header"),
+                                  MultiModifier(box header_extension));
+    reg.register_syntax_extension(intern("hotswap_start"),
+                                  NormalTT(box macro_extension, None, false));
 
-    reg.register_syntax_extension(intern("hotswap_header"), MultiModifier(box header_extension));
-    reg.register_syntax_extension(intern("hotswap_start"), NormalTT(box macro_extension, None, false));
     reg.register_attribute("hotswap".to_string(), AttributeType::Whitelisted);
 }
 
@@ -70,7 +69,9 @@ struct HotswapMacroExtension {
 }
 
 impl MultiItemModifier for HotswapHeaderExtension {
-    fn expand(&self, cx: &mut ExtCtxt, _: Span, _: &MetaItem, annotatable: Annotatable) -> Annotatable {
+    fn expand(&self, cx: &mut ExtCtxt, _: Span, _: &MetaItem,
+              annotatable: Annotatable) -> Annotatable {
+
         if let Annotatable::Item(item) = annotatable {
             if let &ItemKind::Mod(ref m) = &item.node {
                 let mut hotswap_data = self.data.borrow_mut();
@@ -135,7 +136,7 @@ impl TTMacroExpander for HotswapMacroExtension {
                 use std::sync::atomic::Ordering;
 
                 let fn_address = *lib.get::<fn()>($name.as_bytes()).unwrap().deref();
-                $global_ident.store(fn_address as *const () as usize, Ordering::Relaxed);
+                $global_ident.store(fn_address as usize, Ordering::Relaxed);
             }).unwrap();
 
             ref_updaters.push(stmt);
@@ -233,27 +234,6 @@ impl TTMacroExpander for HotswapMacroExtension {
 }
 
 // Utility method and helpers to read rustc compilation arguments.
-fn rustc_arg(arg_name: &str) -> String {
-    let mut args = std::env::args();
-    loop {
-        match args.next() {
-            Some(arg) => {
-                if arg == arg_name {
-                    return args.next().unwrap();
-                }
-            }
-            None => panic!("could not find arg"),
-        }
-    }
-}
-
-fn crate_type() -> String {
-    rustc_arg("--crate-type")
-}
-
-fn crate_name() -> String {
-    rustc_arg("--crate-name")
-}
 
 // Ignore dead code in the lib build, probably there will be a lot of it
 // starting at the `main` function.
@@ -355,7 +335,9 @@ fn expand_bin_fn(cx: &mut ExtCtxt, item: &Item, hotswap_data: &mut HotswapData) 
     P(new_item)
 }
 
-fn expand_bin_fn_body(cx: &mut ExtCtxt, fn_decl: &FnDecl, fn_name: &str, hotswap_data: &mut HotswapData) -> P<Block> {
+fn expand_bin_fn_body(cx: &mut ExtCtxt, fn_decl: &FnDecl, fn_name: &str,
+                      hotswap_data: &mut HotswapData) -> P<Block> {
+
     let arg_idents = comma_separated_tokens(cx, &arg_idents(fn_decl));
     let arg_types = comma_separated_tokens(cx, &arg_types(fn_decl));
     let ret = return_type(cx, fn_decl);
@@ -377,58 +359,6 @@ fn expand_bin_fn_body(cx: &mut ExtCtxt, fn_decl: &FnDecl, fn_name: &str, hotswap
     }).unwrap())
 }
 
-fn global_fn_ident(fn_name: &str) -> Ident {
+pub fn global_fn_ident(fn_name: &str) -> Ident {
     Ident::with_empty_ctxt(intern(&("_HOTSWAP_".to_string() + fn_name)))
-}
-
-fn comma_separated_tokens<T: ToTokens>(cx: &mut ExtCtxt, entries: &[T]) -> Vec<TokenTree> {
-    entries.iter()
-        .map(|t| t.to_tokens(cx))
-        .collect::<Vec<_>>()
-        .join(&TokenTree::Token(codemap::DUMMY_SP, token::Comma))
-}
-
-fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
-    decl.inputs
-        .iter()
-        .filter_map(|arg| {
-            let mut ident = None;
-            arg.pat.walk(&mut |pat| {
-                if let &PatKind::Ident(_, ref span_ident, _) = &pat.node {
-                    ident = Some(span_ident.node.clone());
-                    false
-                } else {
-                    true
-                }
-            });
-            ident
-        })
-        .collect()
-}
-
-fn arg_types(fn_decl: &FnDecl) -> Vec<Ty> {
-    fn_decl.inputs.iter().map(|arg| (*arg.ty).clone()).collect()
-}
-
-fn return_type(cx: &mut ExtCtxt, fn_decl: &FnDecl) -> P<Ty> {
-    match &fn_decl.output {
-        &FunctionRetTy::Ty(ref ty) => ty.clone(),
-        _ => quote_ty!(cx, ()),
-    }
-}
-
-fn item_name(item: &Item) -> String {
-    format!("{}", item.ident.name)
-}
-
-fn item_attr_names(item: &Item) -> HashSet<&str> {
-    let mut attr_names = HashSet::new();
-
-    for attr in &item.attrs {
-        if let &MetaItemKind::Word(ref word) = &attr.node.value.node {
-            attr_names.insert(&**word);
-        }
-    }
-
-    attr_names
 }
