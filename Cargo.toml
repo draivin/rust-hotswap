@@ -11,5 +11,4 @@ name = "hotswap"
 plugin = true
 
 [dependencies]
-aster = "0.18.*"
 lazy_static = "0.2.*"

@@ -2,7 +2,6 @@
 
 extern crate syntax;
 extern crate rustc_plugin;
-extern crate aster;
 
 #[macro_use]
 extern crate lazy_static;
@@ -10,8 +9,8 @@ extern crate lazy_static;
 use rustc_plugin::registry::Registry;
 
 use syntax::abi::Abi;
-use syntax::ast::{Attribute, Block, Expr, FnDecl, FunctionRetTy, Ident, Item, ItemKind, MetaItem,
-                  MetaItemKind, Mod, Mutability, PatKind, Stmt, TokenTree, Ty, Visibility};
+use syntax::ast::{Attribute, Block, FnDecl, FunctionRetTy, Ident, Item, ItemKind, MetaItem,
+                  MetaItemKind, Mod, PatKind, Stmt, TokenTree, Ty, Visibility};
 use syntax::codemap::{self, Span};
 use syntax::ext::base::{Annotatable, ExtCtxt, MacEager, MacResult};
 use syntax::ext::base::SyntaxExtension::MultiModifier;
@@ -53,6 +52,7 @@ fn expand_header(cx: &mut ExtCtxt, _: Span, _: &MetaItem, annotatable: Annotatab
     if let Annotatable::Item(item) = annotatable {
         if let &ItemKind::Mod(ref m) = &item.node {
             let mut hotswap_data = &mut *HOTSWAP_DATA.write().unwrap();
+
             let new_mod_items = match crate_type().as_ref() {
                 "bin" => expand_bin_mod(cx, m, &mut hotswap_data),
                 _ => expand_lib_mod(cx, m, &mut hotswap_data),
@@ -95,14 +95,16 @@ fn expand_macro(cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
         unimplemented!();
     }
 
-    let builder = aster::AstBuilder::new();
     let names = &*HOTSWAP_DATA.read().unwrap();
 
     // Create one statement per hotswapped function, each
     // statement will update its global variable to point
     // to the latest dynamic address.
-    let id_names: Vec<(P<Expr>, &str)> = names.iter()
-        .map(|name| (builder.expr().id(global_fn_name(name)), name.as_str()))
+    let id_names: Vec<(Ident, &str)> = names.iter()
+        .map(|name| {
+            let id = Ident::with_empty_ctxt(intern(&global_fn_name(name)));
+            (id, name.as_str())
+        })
         .collect();
 
     let ref_updaters: Vec<Stmt> = id_names.into_iter()
@@ -282,8 +284,7 @@ fn expand_bin_mod(cx: &mut ExtCtxt, m: &Mod, hotswap_data: &mut HotswapData) -> 
 
     // TODO: look for a way to load the crates that does
     // not require them to be a dependency of the client.
-    let builder = aster::AstBuilder::new();
-    new_items.push(builder.item().extern_crate("libloading").build());
+    new_items.push(quote_item!(cx, extern crate libloading;).unwrap());
 
     let mut hotswappable_fns = Vec::new();
 
@@ -304,13 +305,10 @@ fn expand_bin_mod(cx: &mut ExtCtxt, m: &Mod, hotswap_data: &mut HotswapData) -> 
     for fn_name in hotswappable_fns {
         hotswap_data.push(fn_name.clone());
 
-        let global_name = global_fn_name(&fn_name);
-        let stmt = builder.item().build_item_kind(global_name,
-                                                  ItemKind::Static(builder.ty().usize(),
-                                                                   Mutability::Mutable,
-                                                                   builder.expr().usize(0)));
+        let global_name = Ident::with_empty_ctxt(intern(&global_fn_name(&fn_name)));
+        let item = quote_item!(cx, static mut $global_name: usize = 0;).unwrap();
 
-        new_items.push(stmt);
+        new_items.push(item);
     }
 
     new_items
@@ -335,8 +333,7 @@ fn expand_bin_fn_body(cx: &mut ExtCtxt, fn_decl: &FnDecl, fn_name: &str) -> P<Bl
     let arg_types = comma_separated_tokens(cx, &arg_types(fn_decl));
     let ret = return_type(cx, fn_decl);
 
-    let builder = aster::AstBuilder::new();
-    let global_name = builder.expr().id(global_fn_name(fn_name));
+    let global_name = Ident::with_empty_ctxt(intern(&global_fn_name(fn_name)));
 
     P(quote_block!(cx, {
         let func = unsafe {
