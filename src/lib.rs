@@ -110,7 +110,7 @@ fn expand_macro(cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
             quote_stmt!(cx, {
             $id = *(lib.get::<extern "Rust" fn()>($name.as_bytes())
                 .expect("Failed to load Symbol")
-                .deref()) as *const () as u64;
+                .deref()) as *const () as usize;
         })
                 .unwrap()
         })
@@ -306,9 +306,9 @@ fn expand_bin_mod(cx: &mut ExtCtxt, m: &Mod, hotswap_data: &mut HotswapData) -> 
 
         let global_name = global_fn_name(&fn_name);
         let stmt = builder.item().build_item_kind(global_name,
-                                                  ItemKind::Static(builder.ty().u64(),
+                                                  ItemKind::Static(builder.ty().usize(),
                                                                    Mutability::Mutable,
-                                                                   builder.expr().u64(0)));
+                                                                   builder.expr().usize(0)));
 
         new_items.push(stmt);
     }
