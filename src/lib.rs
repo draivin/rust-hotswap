@@ -113,17 +113,16 @@ fn expand_macro(cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
 
 
     #[cfg(target_os = "windows")]
-    let dylib_ext = ".dll";
+    let dylib_name = crate_name() + ".dll";
 
     #[cfg(target_os = "macos")]
-    let dylib_ext = ".dylib";
+    let dylib_name = crate_name() + ".dylib";
 
     #[cfg(any(target_os = "linux",
               target_os = "freebsd",
               target_os = "dragonfly"))]
-    let dylib_ext = ".so";
+    let dylib_name = "lib".to_string() + &crate_name() + ".so";
 
-    let dylib_name = crate_name() + dylib_ext;
 
     // This is the code that will be injected on the client,
     // and will try to keep the dynamic library updated.
