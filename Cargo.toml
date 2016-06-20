@@ -11,4 +11,3 @@ name = "hotswap"
 plugin = true
 
 [dependencies]
-lazy_static = "0.2.*"

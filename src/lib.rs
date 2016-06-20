@@ -3,9 +3,6 @@
 extern crate syntax;
 extern crate rustc_plugin;
 
-#[macro_use]
-extern crate lazy_static;
-
 use rustc_plugin::registry::Registry;
 
 use syntax::abi::Abi;
@@ -232,8 +229,6 @@ impl TTMacroExpander for HotswapMacroExtension {
         MacEager::expr(P(block))
     }
 }
-
-// Utility method and helpers to read rustc compilation arguments.
 
 // Ignore dead code in the lib build, probably there will be a lot of it
 // starting at the `main` function.
