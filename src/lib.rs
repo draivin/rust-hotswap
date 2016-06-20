@@ -113,15 +113,17 @@ fn expand_macro(cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
 
 
     #[cfg(target_os = "windows")]
-    let glob_pattern = "/*.dll";
+    let dylib_ext = ".dll";
 
     #[cfg(target_os = "macos")]
-    let glob_pattern = "/*.dylib";
+    let dylib_ext = ".dylib";
 
     #[cfg(any(target_os = "linux",
               target_os = "freebsd",
               target_os = "dragonfly"))]
-    let glob_pattern = "/*.so";
+    let dylib_ext = ".so";
+
+    let dylib_name = crate_name() + dylib_ext;
 
     // This is the code that will be injected on the client,
     // and will try to keep the dynamic library updated.
@@ -133,41 +135,35 @@ fn expand_macro(cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
         use std::thread;
         use std::fs;
 
-        use glob::glob;
         use libloading::Library;
 
         use std::env::current_exe;
 
         let exe = current_exe().unwrap();
         let dir = exe.parent().unwrap();
-        let dir_str = dir.to_str().unwrap();
-
-        let dylib_path = dir.join("hotswap-dylib");
-        let glob_pattern = dir_str.to_string() + $glob_pattern;
-
 
         // TODO: warn if dynamic library was not found.
-        let mut paths = glob(&glob_pattern).unwrap();
-        let path = paths.next().unwrap().unwrap();
-        let path_move = path.clone();
+        let tmp_path = dir.join("hotswap-dylib");
+        let dylib_file = dir.join($dylib_name);
+        let dylib_move = dylib_file.clone();
 
-        let mut last_modified = fs::metadata(&path).unwrap().modified().unwrap();
+        let mut last_modified = fs::metadata(&dylib_file).unwrap().modified().unwrap();
 
         let reload_dylib = move |dylib_num| {
             // Windows locks the dynamic library once it is loaded, so
             // I'm creating a copy for now.
-            let file_name = format!("{}{}.{}", path_move.file_stem().unwrap().to_str().unwrap(),
+            let copy_name = format!("{}{}.{}", dylib_move.file_stem().unwrap().to_str().unwrap(),
                                                dylib_num,
-                                               path_move.extension().unwrap().to_str().unwrap());
+                                               dylib_move.extension().unwrap().to_str().unwrap());
 
 
-            let mut new_path = dylib_path.clone();
-            fs::create_dir_all(&new_path).unwrap();
+            let mut dylib_copy = tmp_path.clone();
+            fs::create_dir_all(&tmp_path).unwrap();
 
-            new_path.push(file_name);
-            fs::copy(&path_move, &new_path).unwrap();
+            dylib_copy.push(copy_name);
+            fs::copy(&dylib_move, &dylib_copy).unwrap();
 
-            let lib = Library::new(new_path.to_str().unwrap()).expect("Failed to load library");
+            let lib = Library::new(dylib_copy.to_str().unwrap()).expect("Failed to load library");
 
             unsafe {
                 $ref_updaters
@@ -188,7 +184,7 @@ fn expand_macro(cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
 
                 // TODO: use some filesystem notification crate
                 // so it reloads as soon as the file changes.
-                let modified = match fs::metadata(&path) {
+                let modified = match fs::metadata(&dylib_file) {
                     Ok(metadata) => metadata.modified().unwrap(),
                     _ => continue,
                 };
@@ -207,18 +203,26 @@ fn expand_macro(cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
 }
 
 // Reads the build type(lib or bin) from the args.
-fn crate_type() -> String {
+fn rustc_arg(arg_name: &str) -> String {
     let mut args = std::env::args();
     loop {
         match args.next() {
             Some(arg) => {
-                if arg == "--crate-type" {
+                if arg == arg_name {
                     return args.next().unwrap();
                 }
             }
-            None => panic!("could not detect crate-type"),
+            None => panic!("could not find arg"),
         }
     }
+}
+
+fn crate_type() -> String {
+    rustc_arg("--crate-type")
+}
+
+fn crate_name() -> String {
+    rustc_arg("--crate-name")
 }
 
 // The lib code marks the hotswapped functions as `no_mangle` and
@@ -269,7 +273,6 @@ fn expand_bin_mod(cx: &mut ExtCtxt, m: &Mod, hotswap_data: &mut HotswapData) -> 
     // not require them to be a dependency of the client.
     let builder = aster::AstBuilder::new();
     new_items.push(builder.item().extern_crate("libloading").build());
-    new_items.push(builder.item().extern_crate("glob").build());
 
     let mut hotswappable_fns = Vec::new();
 

@@ -11,7 +11,7 @@ Beware that the library is a completely unsafe prototype for now, and it will pr
 
 ## Current Limitations
 - Changing hotswapped function signatures **WILL** result in a segfault.
-- Requires extra dependencies in the user application.
+- Requires extra dependency in the user application.
 - Leaks a dynamic library on each swap.
 
 ## Example
@@ -28,9 +28,8 @@ crate-type = ["dylib"]
 path = "src/main.rs"
 
 [dependencies]
-hotswap = "*"
-libloading = "*" # glob and libreloading are
-glob = "*"       # required dependencies for now.
+hotswap = "*"    # libloading is a required
+libloading = "*" # dependency for now
 ```
 
 ```rust
