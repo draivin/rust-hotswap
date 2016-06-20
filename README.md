@@ -50,8 +50,10 @@ fn test(test: i32) -> () {
 fn main() {
     hotswap_start!();
 
+    let mut i = 1;
     loop {
-        test(123);
+        test(i);
+        i += 1;
         sleep(Duration::from_millis(2000));
     }
 }
@@ -59,27 +61,28 @@ fn main() {
 ```
 
 And that is it!
+
 From there you can
 ```
 > cargo run
      Running `target\debug\hotswaptest.exe`
-Foo: 123
-Foo: 123
-Foo: 123
+Foo: 1
+Foo: 2
+Foo: 3
 ```
 
-and if you edit the printing code, changing it to
+once it is running, you can edit the printing code, e.g.
 ```rust
-    println!("Bar: {}", test);
+    println!("Bar: {} :)", test);
 ```
-and recompiling the code on another terminal (or putting the running task in the background)
+and once you recompile the code on another terminal (or on the same one using background)
 ```
 > cargo build --lib
    Compiling hotswapdemo v0.1.0[...]
 > fg
-Foo: 123
-Foo: 123
-Bar: 123
-Bar: 123
+Foo: 7
+Foo: 8
+Bar: 9 :)
+Bar: 10 :)
 ```
-the running function will update automatically to the latest version without restarting the executable!
+the running code will update without losing state!
