@@ -112,6 +112,10 @@ impl TTMacroExpander for HotswapMacroExtension {
         if crate_type() != "bin" {
             // Just some arbitrary unsafe code that does nothing so the
             // compiler doesn't complain about unnused unsafe blocks.
+            //
+            // Also happens to stop the build immediately on the lib
+            // build, instead of building the lib and stopping on the
+            // bin build.
             return MacEager::expr(quote_expr!(cx, {
                 &*(0 as *const usize);
             }));
