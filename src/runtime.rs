@@ -7,36 +7,43 @@ use ::{HotswapFnList, HotswapFnInfo};
 use ::util::rustc::{crate_name};
 use ::util::syntax::comma_separated_tokens;
 
-pub fn create_static_items(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> Vec<P<Item>> {
+// Creates a module with a static pointer for each hotswapped function.
+pub fn create_hotswap_mod(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> P<Item> {
     let mut static_items = Vec::new();
 
-    let atomic_usize = quote_ty!(cx, std::sync::atomic::AtomicUsize);
-    let atomic_usize_init = P(quote_expr!(cx, std::sync::atomic::ATOMIC_USIZE_INIT).unwrap());
+    let atomic_usize = quote_ty!(cx, ::std::sync::atomic::AtomicUsize);
+    let atomic_usize_init = P(quote_expr!(cx, ::std::sync::atomic::ATOMIC_USIZE_INIT).unwrap());
 
     for hotswap_fn in hotswap_fns {
-        let global_name = global_fn_ident(&hotswap_fn.name);
+        let dyn_pointer = pointer_ident(&hotswap_fn.name);
         let item = quote_item!(cx,
             #[allow(non_upper_case_globals)]
-            static $global_name: $atomic_usize = $atomic_usize_init;
+            pub static $dyn_pointer: $atomic_usize = $atomic_usize_init;
         ).unwrap();
 
         static_items.push(item);
     }
 
-    static_items
+    quote_item!(cx,
+        #[allow(non_snake_case)]
+        mod _HOTSWAP_RUNTIME {
+            $static_items
+        }
+    ).unwrap()
 }
 
 pub fn create_fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
     let arg_idents = comma_separated_tokens(cx, &fn_info.input_idents);
     let arg_types = comma_separated_tokens(cx, &fn_info.input_types);
-    let global_name = global_fn_ident(&fn_info.name);
+    let dyn_pointer = pointer_ident(&fn_info.name);
     let ret = &fn_info.output_type;
 
     P(quote_block!(cx, {
         let func = unsafe {
             use std::mem::transmute;
             use std::sync::atomic::Ordering;
-            transmute::<_, extern "Rust" fn($arg_types) -> $ret>($global_name.load(Ordering::Relaxed))
+            transmute::<_, extern "Rust" fn($arg_types) -> $ret>(
+                ::_HOTSWAP_RUNTIME::$dyn_pointer.load(Ordering::Relaxed))
         };
 
         func($arg_idents)
@@ -44,21 +51,20 @@ pub fn create_fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
 }
 
 pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> P<Expr> {
+    let mut ref_updaters = Vec::new();
+
     // Create one statement per hotswapped function, each
     // statement will update its global variable to point
     // to the latest dynamic address.
-
-    let mut ref_updaters = Vec::new();
-
     for hotswap_fn in hotswap_fns.iter() {
         let name = &hotswap_fn.name;
-        let global_ident = global_fn_ident(name);
+        let global_ident = pointer_ident(name);
 
         let stmt = quote_stmt!(cx, {
             use std::sync::atomic::Ordering;
 
             let fn_address = *lib.get::<fn()>($name.as_bytes()).unwrap().deref();
-            $global_ident.store(fn_address as usize, Ordering::Relaxed);
+            ::_HOTSWAP_RUNTIME::$global_ident.store(fn_address as usize, Ordering::Relaxed);
         }).unwrap();
 
         ref_updaters.push(stmt);
@@ -146,6 +152,6 @@ pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> 
     P(block)
 }
 
-fn global_fn_ident(fn_name: &str) -> Ident {
+fn pointer_ident(fn_name: &str) -> Ident {
     Ident::with_empty_ctxt(intern(&("_HOTSWAP_".to_string() + fn_name)))
 }

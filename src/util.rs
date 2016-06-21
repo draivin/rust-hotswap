@@ -1,12 +1,10 @@
 pub mod syntax {
-    use syntax::ast::{FnDecl, FunctionRetTy, Ident, Item, MetaItemKind, PatKind, TokenTree, Ty};
+    use syntax::ast::{FnDecl, FunctionRetTy, Ident, PatKind, TokenTree, Ty};
     use syntax::codemap;
     use syntax::ext::base::ExtCtxt;
     use syntax::ext::quote::rt::ToTokens;
     use syntax::parse::token;
     use syntax::ptr::P;
-
-    use std::collections::HashSet;
 
     pub fn comma_separated_tokens<T: ToTokens>(cx: &mut ExtCtxt, entries: &[T]) -> Vec<TokenTree> {
         entries.iter()
@@ -44,20 +42,8 @@ pub mod syntax {
         }
     }
 
-    pub fn item_name(item: &Item) -> String {
-        format!("{}", item.ident.name)
-    }
-
-    pub fn item_attr_names(item: &Item) -> HashSet<&str> {
-        let mut attr_names = HashSet::new();
-
-        for attr in &item.attrs {
-            if let &MetaItemKind::Word(ref word) = &attr.node.value.node {
-                attr_names.insert(&**word);
-            }
-        }
-
-        attr_names
+    pub fn ident_name(ident: &Ident) -> String {
+        format!("{}", ident.name)
     }
 }
 
