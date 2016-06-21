@@ -26,6 +26,23 @@ pub fn create_static_items(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> Vec
     static_items
 }
 
+pub fn create_fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
+    let arg_idents = comma_separated_tokens(cx, &fn_info.input_idents);
+    let arg_types = comma_separated_tokens(cx, &fn_info.input_types);
+    let global_name = global_fn_ident(&fn_info.name);
+    let ret = &fn_info.output_type;
+
+    P(quote_block!(cx, {
+        let func = unsafe {
+            use std::mem::transmute;
+            use std::sync::atomic::Ordering;
+            transmute::<_, extern "Rust" fn($arg_types) -> $ret>($global_name.load(Ordering::Relaxed))
+        };
+
+        func($arg_idents)
+    }).unwrap())
+}
+
 pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> P<Expr> {
     // Create one statement per hotswapped function, each
     // statement will update its global variable to point
@@ -127,23 +144,6 @@ pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> 
     }).unwrap();
 
     P(block)
-}
-
-pub fn create_fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
-    let arg_idents = comma_separated_tokens(cx, &fn_info.input_idents);
-    let arg_types = comma_separated_tokens(cx, &fn_info.input_types);
-    let global_name = global_fn_ident(&fn_info.name);
-    let ret = &fn_info.output_type;
-
-    P(quote_block!(cx, {
-        let func = unsafe {
-            use std::mem::transmute;
-            use std::sync::atomic::Ordering;
-            transmute::<_, extern "Rust" fn($arg_types) -> $ret>($global_name.load(Ordering::Relaxed))
-        };
-
-        func($arg_idents)
-    }).unwrap())
 }
 
 fn global_fn_ident(fn_name: &str) -> Ident {
