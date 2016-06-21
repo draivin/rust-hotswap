@@ -88,11 +88,6 @@ impl MultiItemModifier for HotswapHeaderExtension {
                     _ => item.attrs,
                 };
 
-                if crate_type() == "dylib" {
-                    // println!("{:#?}", &a);
-                    // println!("{:#?}", &item);
-                }
-
                 Annotatable::Item(P(item))
             } else {
                 // TODO: proper warning when the header annotation is
@@ -159,17 +154,6 @@ fn expand_lib_mod(cx: &mut ExtCtxt, mut m: Mod) -> Mod {
 }
 
 fn expand_lib_fn(cx: &mut ExtCtxt, mut item: Item) -> Item {
-
-    // let name = Ident::with_empty_ctxt(intern(&item_name(&item)));
-    // let a = quote_item!(cx,
-    //     pub extern "Rust" fn $name(_: i32) {}
-    // ).unwrap();
-
-    // use syntax::ext::quote::rt::ToTokens;
-    // println!("{:#?}", a.clone().to_tokens(cx));
-
-    // return a.unwrap();
-
     if let &mut ItemKind::Fn(_, _, _, ref mut abi, _, _) = &mut item.node {
         // Make lib functions extern and no mangle so they can
         // be imported from the runtime
