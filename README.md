@@ -6,8 +6,8 @@ Beware that the library is a completely unsafe prototype for now, and it will pr
 ## Usage
 - Using a nightly rust, import the plugin `hotswap`.
 - Annotate the functions you want to hotswap with the `#[hotswap]` modifier.
-- Add the `#![hotswap_header]` to the top of your program.
-- Add the `hotswap_start!()` macro to the entry point of your program, before you call any hotswapped functions.
+- Add `#![hotswap_header]` to the top of your program.
+- Add `unsafe { hotswap_start!() }` to the entry point of your program, before you call any hotswapped functions.
 - Add a `dylib` build with the same project name and path to your `Cargo.toml`.
 
 ## Current Limitations
@@ -50,7 +50,7 @@ fn test(test: i32) -> () {
 }
 
 fn main() {
-    hotswap_start!();
+    unsafe{ hotswap_start!() }
 
     let mut i = 1;
     loop {

@@ -116,9 +116,8 @@ pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> 
 
             let lib = Library::new(dylib_copy.to_str().unwrap()).expect("Failed to load library");
 
-            unsafe {
-                $ref_updaters
-            };
+            // Inline the function reference updaters.
+            $ref_updaters
 
             // TODO: unload unnused library and delete dynamic library copy.
             // FIXME: leaking memory for now.

@@ -110,7 +110,11 @@ impl TTMacroExpander for HotswapMacroExtension {
         // Macro in lib code shouldn't be expanded, as the
         // crate dependencies aren't imported.
         if crate_type() != "bin" {
-            return MacEager::expr(quote_expr!(cx, {}));
+            // Just some arbitrary unsafe code that does nothing so the
+            // compiler doesn't complain about unnused unsafe blocks.
+            return MacEager::expr(quote_expr!(cx, {
+                &*(0 as *const usize);
+            }));
         }
 
         // Macro should be empty.
