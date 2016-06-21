@@ -79,7 +79,11 @@ impl MultiItemModifier for HotswapHeaderExtension {
                 let mut hotswap_fns = self.data.borrow_mut();
 
                 item.node = ItemKind::Mod(match crate_type().as_ref() {
-                    "bin" => expand_bin_mod(cx, m, &mut hotswap_fns),
+                    "bin" => {
+                        let m = expand_bin_mod(cx, m, &mut hotswap_fns);
+                        let m = expand_bin_footer(cx, m, &mut hotswap_fns);
+                        m
+                    },
                     _ => expand_lib_mod(cx, m),
                 });
 
@@ -137,6 +141,7 @@ fn expand_lib_mod(cx: &mut ExtCtxt, mut m: Mod) -> Mod {
 
         item.node = match item.node {
             ItemKind::Mod(m) => {
+                // Only functions in public mods can be exported.
                 item.vis = Visibility::Public;
                 ItemKind::Mod(expand_lib_mod(cx, m))
             },
@@ -156,7 +161,7 @@ fn expand_lib_mod(cx: &mut ExtCtxt, mut m: Mod) -> Mod {
 fn expand_lib_fn(cx: &mut ExtCtxt, mut item: Item) -> Item {
     if let &mut ItemKind::Fn(_, _, _, ref mut abi, _, _) = &mut item.node {
         // Make lib functions extern and no mangle so they can
-        // be imported from the runtime
+        // be imported from the runtime.
 
         let attr = quote_attr!(cx, #![no_mangle]);
 
@@ -193,6 +198,10 @@ fn expand_bin_mod(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList)
         }
     }).collect();
 
+    m
+}
+
+fn expand_bin_footer(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
     // TODO: look for a way to load the crates that does
     // not require them to be a dependency of the client.
     m.items.insert(0, quote_item!(cx, extern crate libloading;).unwrap());
