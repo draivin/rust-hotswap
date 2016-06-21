@@ -8,11 +8,13 @@ Beware that the library is a completely unsafe prototype for now, and it will pr
 - Annotate the functions you want to hotswap with the `#[hotswap]` modifier.
 - Add the `#![hotswap_header]` to the top of your program.
 - Add the `hotswap_start!()` macro to the entry point of your program, before you call any hotswapped functions.
+- Add a `dylib` build with the same project name and path to your `Cargo.toml`.
 
 ## Current Limitations
 - Changing hotswapped function signatures **WILL** result in a segfault.
-- Requires extra dependency in the user application.
+- Requires an extra dependency in the user application.
 - Leaks a dynamic library on each swap.
+- Probably many others that I don't know about!
 
 ## Example
 ```toml
@@ -65,7 +67,7 @@ And that is it!
 From there you can
 ```
 > cargo run
-     Running `target\debug\hotswaptest.exe`
+     Running `target/debug/hotswapdemo`
 Foo: 1
 Foo: 2
 Foo: 3
@@ -78,11 +80,11 @@ once it is running, you can edit the printing code, e.g.
 and once you recompile the code on another terminal (or on the same one using background)
 ```
 > cargo build --lib
-   Compiling hotswapdemo v0.1.0[...]
+   Compiling hotswapdemo v0.1.0 [...]
 > fg
 Foo: 7
 Foo: 8
 Bar: 9 :)
 Bar: 10 :)
 ```
-the running code will update without losing state!
+the running code will update without restarting the binary or losing state!
