@@ -107,15 +107,18 @@ impl MultiItemModifier for HotswapHeaderExtension {
 
 impl TTMacroExpander for HotswapMacroExtension {
     fn expand(&self, cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
-        // Macro in lib code shouldn't be expanded, as the
-        // crate dependencies aren't imported.
-        if crate_type() != "bin" {
+        let hotswap_fns = self.data.borrow();
+
+        // Macro in lib build shouldn't be expanded, as the
+        // crate dependencies aren't imported, the length is
+        // also 0 when there is no hotswap_header.
+        if hotswap_fns.len() == 0 {
             // Just some arbitrary unsafe code that does nothing so the
             // compiler doesn't complain about unnused unsafe blocks.
             //
             // Also happens to stop the build immediately on the lib
-            // build, instead of building the lib and stopping on the
-            // bin build.
+            // build if the user haven't wrapped the macro in unsafe,
+            // instead of building the lib and stopping on the bin build.
             return MacEager::expr(quote_expr!(cx, {
                 &*(0 as *const usize);
             }));
@@ -128,7 +131,6 @@ impl TTMacroExpander for HotswapMacroExtension {
             unimplemented!();
         }
 
-        let hotswap_fns = self.data.borrow();
         MacEager::expr(runtime::create_macro_expansion(cx, &hotswap_fns))
     }
 }
