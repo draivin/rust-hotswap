@@ -71,15 +71,17 @@ pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> 
     }
 
     #[cfg(target_os = "windows")]
-    let dylib_name = crate_name() + ".dll";
+    let dylib_name_template = crate_name() + "{}.dll";
 
     #[cfg(target_os = "macos")]
-    let dylib_name = crate_name() + ".dylib";
+    let dylib_name_template = crate_name() + "{}.dylib";
 
     #[cfg(any(target_os = "linux",
               target_os = "freebsd",
               target_os = "dragonfly"))]
-    let dylib_name = "lib".to_string() + &crate_name() + ".so";
+    let dylib_name_template = "lib".to_string() + &crate_name() + "{}.so";
+
+    let dylib_name = dylib_name_template.replace("{}", "");
 
     let block = quote_expr!(cx, {
         use std::ops::Deref;
@@ -103,10 +105,7 @@ pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> 
         let reload_dylib = move |dylib_num| {
             // Windows locks the dynamic library once it is loaded, so
             // I'm creating a copy for now.
-            let copy_name = format!("{}{}.{}", dylib_move.file_stem().unwrap().to_str().unwrap(),
-                                               dylib_num,
-                                               dylib_move.extension().unwrap().to_str().unwrap());
-
+            let copy_name = format!($dylib_name_template, dylib_num);
 
             let mut dylib_copy = tmp_path.clone();
             fs::create_dir_all(&tmp_path).unwrap();
