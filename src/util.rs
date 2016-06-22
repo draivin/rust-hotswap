@@ -19,8 +19,8 @@ pub mod syntax {
             .filter_map(|arg| {
                 let mut ident = None;
                 arg.pat.walk(&mut |pat| {
-                    if let &PatKind::Ident(_, ref span_ident, _) = &pat.node {
-                        ident = Some(span_ident.node.clone());
+                    if let PatKind::Ident(_, ref span_ident, _) = pat.node {
+                        ident = Some(span_ident.node);
                         false
                     } else {
                         true
@@ -36,8 +36,8 @@ pub mod syntax {
     }
 
     pub fn return_type(cx: &mut ExtCtxt, fn_decl: &FnDecl) -> P<Ty> {
-        match &fn_decl.output {
-            &FunctionRetTy::Ty(ref ty) => ty.clone(),
+        match fn_decl.output {
+            FunctionRetTy::Ty(ref ty) => ty.clone(),
             _ => quote_ty!(cx, ()),
         }
     }

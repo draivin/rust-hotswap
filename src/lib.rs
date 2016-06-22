@@ -59,7 +59,7 @@ pub struct HotswapFnInfo {
     output_type: P<Ty>
 }
 
-pub type HotswapFnList = Vec<HotswapFnInfo>;
+type HotswapFnList = Vec<HotswapFnInfo>;
 
 struct HotswapHeaderExtension {
     data: Rc<RefCell<HotswapFnList>>
@@ -80,9 +80,8 @@ impl MultiItemModifier for HotswapHeaderExtension {
 
                 item.node = ItemKind::Mod(match crate_type().as_ref() {
                     "bin" => {
-                        let m = expand_bin_mod(cx, m, &mut hotswap_fns);
-                        let m = expand_bin_footer(cx, m, &mut hotswap_fns);
-                        m
+                        let tmp = expand_bin_mod(cx, m, &mut hotswap_fns);
+                        expand_bin_footer(cx, tmp, &mut hotswap_fns)
                     },
                     _ => expand_lib_mod(cx, m),
                 });
@@ -169,7 +168,7 @@ fn expand_lib_mod(cx: &mut ExtCtxt, mut m: Mod) -> Mod {
 }
 
 fn expand_lib_fn(cx: &mut ExtCtxt, mut item: Item) -> Item {
-    if let &mut ItemKind::Fn(_, _, _, ref mut abi, _, _) = &mut item.node {
+    if let ItemKind::Fn(_, _, _, ref mut abi, _, _) = item.node {
         // Make lib functions extern and no mangle so they can
         // be imported from the runtime.
 

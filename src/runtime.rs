@@ -3,12 +3,12 @@ use syntax::ext::base::ExtCtxt;
 use syntax::parse::token::intern;
 use syntax::ptr::P;
 
-use ::{HotswapFnList, HotswapFnInfo};
+use ::HotswapFnInfo;
 use ::util::rustc::{crate_name};
 use ::util::syntax::comma_separated_tokens;
 
 // Creates a module with a static pointer for each hotswapped function.
-pub fn create_hotswap_mod(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> P<Item> {
+pub fn create_hotswap_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {
     let mut static_items = Vec::new();
 
     let atomic_usize = quote_ty!(cx, ::std::sync::atomic::AtomicUsize);
@@ -50,7 +50,7 @@ pub fn create_fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
     }).unwrap())
 }
 
-pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &HotswapFnList) -> P<Expr> {
+pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Expr> {
     let mut ref_updaters = Vec::new();
 
     // Create one statement per hotswapped function, each
