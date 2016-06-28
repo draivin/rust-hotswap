@@ -85,6 +85,8 @@ impl MultiItemModifier for HotswapHeaderExtension {
 
                 item.node = ItemKind::Mod(match crate_type().as_ref() {
                     "bin" => {
+                        // Various features that are used in the runtime,
+                        // should probably make a function that adds them.
                         item.attrs.push(quote_attr!(cx, #![feature(const_fn)]));
                         item.attrs.push(quote_attr!(cx, #![feature(arc_counts)]));
                         item.attrs.push(quote_attr!(cx, #![feature(drop_types_in_const)]));
