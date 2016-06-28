@@ -76,9 +76,9 @@ struct HotswapMacroExtension {
 
 impl MultiItemModifier for HotswapHeaderExtension {
     fn expand(&self, cx: &mut ExtCtxt, _: Span, _: &MetaItem,
-              annotatable: Annotatable) -> Annotatable {
+              annotatable: Annotatable) -> Vec<Annotatable> {
 
-        if let Annotatable::Item(item) = annotatable {
+        let annotatable = if let Annotatable::Item(item) = annotatable {
             let mut item = item.unwrap();
             if let ItemKind::Mod(m) = item.node {
                 let mut hotswap_fns = self.data.borrow_mut();
@@ -113,7 +113,9 @@ impl MultiItemModifier for HotswapHeaderExtension {
 
         } else {
             annotatable
-        }
+        };
+
+        vec![annotatable]
     }
 }
 
