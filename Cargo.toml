@@ -11,3 +11,5 @@ name = "hotswap"
 plugin = true
 
 [dependencies]
+libloading = "*"
+parking_lot = {version = "*", features = ["nightly"]}

@@ -1,10 +1,25 @@
 pub mod syntax {
-    use syntax::ast::{FnDecl, FunctionRetTy, Ident, PatKind, TokenTree, Ty};
+    use syntax::ast::{FnDecl, FunctionRetTy, Ident, Item, ItemKind, PatKind, TokenTree, Ty};
     use syntax::codemap;
     use syntax::ext::base::ExtCtxt;
     use syntax::ext::quote::rt::ToTokens;
     use syntax::parse::token;
     use syntax::ptr::P;
+
+    use ::HotswapFnInfo;
+
+    pub fn get_fn_info(cx: &mut ExtCtxt, item: &Item) -> HotswapFnInfo {
+        if let ItemKind::Fn(ref fn_decl, _, _, _, _, _) = item.node {
+            HotswapFnInfo {
+                name: ident_name(&item.ident),
+                input_types: arg_types(fn_decl),
+                input_idents: arg_idents(fn_decl),
+                output_type: return_type(cx, fn_decl),
+            }
+        } else {
+            unreachable!();
+        }
+    }
 
     pub fn comma_separated_tokens<T: ToTokens>(cx: &mut ExtCtxt, entries: &[T]) -> Vec<TokenTree> {
         entries.iter()
@@ -13,7 +28,11 @@ pub mod syntax {
             .join(&TokenTree::Token(codemap::DUMMY_SP, token::Comma))
     }
 
-    pub fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
+    fn ident_name(ident: &Ident) -> String {
+        format!("{}", ident.name)
+    }
+
+    fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
         decl.inputs
             .iter()
             .filter_map(|arg| {
@@ -31,19 +50,15 @@ pub mod syntax {
             .collect()
     }
 
-    pub fn arg_types(fn_decl: &FnDecl) -> Vec<Ty> {
+    fn arg_types(fn_decl: &FnDecl) -> Vec<Ty> {
         fn_decl.inputs.iter().map(|arg| (*arg.ty).clone()).collect()
     }
 
-    pub fn return_type(cx: &mut ExtCtxt, fn_decl: &FnDecl) -> P<Ty> {
+    fn return_type(cx: &mut ExtCtxt, fn_decl: &FnDecl) -> P<Ty> {
         match fn_decl.output {
             FunctionRetTy::Ty(ref ty) => ty.clone(),
             _ => quote_ty!(cx, ()),
         }
-    }
-
-    pub fn ident_name(ident: &Ident) -> String {
-        format!("{}", ident.name)
     }
 }
 

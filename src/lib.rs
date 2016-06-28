@@ -3,6 +3,11 @@
 extern crate syntax;
 extern crate rustc_plugin;
 
+// Pub export those crates so we can later import them
+// in the users code.
+pub extern crate libloading;
+pub extern crate parking_lot;
+
 use rustc_plugin::registry::Registry;
 
 use syntax::abi::Abi;
@@ -23,7 +28,7 @@ use std::mem;
 mod util;
 mod runtime;
 
-use util::syntax::*;
+use util::syntax::get_fn_info;
 use util::rustc::*;
 
 // The plugin works by changing the function code depending on the
@@ -56,7 +61,7 @@ pub struct HotswapFnInfo {
     name: String,
     input_types: Vec<Ty>,
     input_idents: Vec<Ident>,
-    output_type: P<Ty>
+    output_type: P<Ty>,
 }
 
 type HotswapFnList = Vec<HotswapFnInfo>;
@@ -80,10 +85,18 @@ impl MultiItemModifier for HotswapHeaderExtension {
 
                 item.node = ItemKind::Mod(match crate_type().as_ref() {
                     "bin" => {
+                        item.attrs.push(quote_attr!(cx, #![feature(const_fn)]));
+                        item.attrs.push(quote_attr!(cx, #![feature(arc_counts)]));
+                        item.attrs.push(quote_attr!(cx, #![feature(drop_types_in_const)]));
                         let tmp = expand_bin_mod(cx, m, &mut hotswap_fns);
                         expand_bin_footer(cx, tmp, &mut hotswap_fns)
                     },
-                    _ => expand_lib_mod(cx, m),
+                    "dylib" => {
+                        expand_lib_mod(cx, m)
+                    },
+                    _ => {
+                        unimplemented!();
+                    }
                 });
 
                 item.attrs = match crate_type().as_ref() {
@@ -130,7 +143,7 @@ impl TTMacroExpander for HotswapMacroExtension {
             unimplemented!();
         }
 
-        MacEager::expr(runtime::create_macro_expansion(cx, &hotswap_fns))
+        MacEager::expr(runtime::macro_expansion(cx, &hotswap_fns))
     }
 }
 
@@ -171,10 +184,7 @@ fn expand_lib_fn(cx: &mut ExtCtxt, mut item: Item) -> Item {
     if let ItemKind::Fn(_, _, _, ref mut abi, _, _) = item.node {
         // Make lib functions extern and no mangle so they can
         // be imported from the runtime.
-
-        let attr = quote_attr!(cx, #![no_mangle]);
-
-        item.attrs.push(attr);
+        item.attrs.push(quote_attr!(cx, #![no_mangle]));
         item.vis = Visibility::Public;
 
         mem::replace(abi, Abi::Rust);
@@ -211,28 +221,21 @@ fn expand_bin_mod(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList)
 }
 
 fn expand_bin_footer(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
-    // TODO: look for a way to load the crates that does
-    // not require them to be a dependency of the client.
-    m.items.insert(0, quote_item!(cx, extern crate libloading;).unwrap());
+    m.items.insert(0, quote_item!(cx, #[allow(plugin_as_library)] extern crate hotswap;).unwrap());
 
     // Create the mod where the function pointers are located.
-    m.items.push(runtime::create_hotswap_mod(cx, hotswap_fns));
+    m.items.push(runtime::hotswap_mod(cx, hotswap_fns));
 
     m
 }
 
 fn expand_bin_fn(cx: &mut ExtCtxt, mut item: Item, hotswap_fns: &mut HotswapFnList) -> Item {
-    if let ItemKind::Fn(ref fn_decl, _, _, _, _, ref mut block) = item.node {
-        let fn_info = HotswapFnInfo {
-            name: ident_name(&item.ident),
-            input_types: arg_types(fn_decl),
-            input_idents: arg_idents(fn_decl),
-            output_type: return_type(cx, fn_decl)
-        };
+    if let ItemKind::Fn(..) = item.node {
+        let fn_info = get_fn_info(cx, &item);
 
-        let new_block = runtime::create_fn_body(cx, &fn_info);
-
-        mem::replace(block, new_block);
+        if let ItemKind::Fn(_, _, _, _, _, ref mut block) = item.node {
+            mem::replace(block, runtime::fn_body(cx, &fn_info));
+        }
 
         hotswap_fns.push(fn_info);
     } else {

@@ -8,17 +8,18 @@ use ::util::rustc::{crate_name};
 use ::util::syntax::comma_separated_tokens;
 
 // Creates a module with a static pointer for each hotswapped function.
-pub fn create_hotswap_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {
+pub fn hotswap_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {
     let mut static_items = Vec::new();
 
-    let atomic_usize = quote_ty!(cx, ::std::sync::atomic::AtomicUsize);
-    let atomic_usize_init = P(quote_expr!(cx, ::std::sync::atomic::ATOMIC_USIZE_INIT).unwrap());
-
     for hotswap_fn in hotswap_fns {
-        let dyn_pointer = pointer_ident(&hotswap_fn.name);
+        let pointer_ident = pointer_ident(&hotswap_fn.name);
+        let input_types = &hotswap_fn.input_types;
+        let output_types = &hotswap_fn.output_type;
+
         let item = quote_item!(cx,
             #[allow(non_upper_case_globals)]
-            pub static $dyn_pointer: $atomic_usize = $atomic_usize_init;
+            // pub static $pointer_ident: AtomicUsize = ATOMIC_USIZE_INIT;
+            pub static $pointer_ident: RwLock<Option<Arc<fn($input_types) -> $output_types>>> = RwLock::new(None);
         ).unwrap();
 
         static_items.push(item);
@@ -26,45 +27,115 @@ pub fn create_hotswap_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<
 
     quote_item!(cx,
         #[allow(non_snake_case)]
+        #[allow(dead_code)]
         mod _HOTSWAP_RUNTIME {
+            use ::std::sync::atomic::{AtomicPtr, Ordering};
+            use ::std::sync::Arc;
+            use ::hotswap::parking_lot::RwLock;
+            use ::hotswap::libloading::Library;
+
             $static_items
+
+            trait FnArc: Send + Sync {
+                fn ref_count(&self) -> usize;
+            }
+
+            impl<T: Send + Sync> FnArc for Arc<T> {
+                fn ref_count(&self) -> usize {
+                    Arc::strong_count(self)
+                }
+            }
+
+            pub struct RefManager {
+                lib: AtomicPtr<Library>,
+                // Contains a copy of every arc to a function in this library
+                // which is no longer stored in the global pointers.
+                refs: Vec<Box<FnArc>>
+            }
+
+            impl RefManager {
+                pub fn new(lib: Library) -> Self {
+                    let ptr = Box::into_raw(Box::new(lib));
+                    let ptr = AtomicPtr::new(ptr);
+
+                    RefManager {
+                        lib: ptr,
+                        refs: Vec::new()
+                    }
+                }
+
+                pub fn should_drop(&mut self) -> bool {
+                    for i in (0..self.refs.len()).rev() {
+                        if self.refs[i].ref_count() == 1 {
+                            self.refs.remove(i);
+                        } else {
+                            return false;
+                        }
+                    }
+                    true
+                }
+
+                pub fn add_ref<T: 'static + Send + Sync>(&mut self, arc: Arc<T>) {
+                    self.refs.push(Box::new(arc));
+                }
+            }
+
+            impl Drop for RefManager {
+                fn drop(&mut self) {
+                    unsafe {
+                        Box::from_raw(self.lib.load(Ordering::Relaxed));
+                    }
+                }
+            }
         }
     ).unwrap()
 }
 
-pub fn create_fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
-    let arg_idents = comma_separated_tokens(cx, &fn_info.input_idents);
-    let arg_types = comma_separated_tokens(cx, &fn_info.input_types);
-    let dyn_pointer = pointer_ident(&fn_info.name);
-    let ret = &fn_info.output_type;
+pub fn fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
+    let pointer_name = &fn_info.name;
+    let pointer_ident = pointer_ident(pointer_name);
+    let input_idents = comma_separated_tokens(cx, &fn_info.input_idents);
 
     P(quote_block!(cx, {
-        let func = unsafe {
-            use std::mem::transmute;
-            use std::sync::atomic::Ordering;
-            transmute::<_, extern "Rust" fn($arg_types) -> $ret>(
-                ::_HOTSWAP_RUNTIME::$dyn_pointer.load(Ordering::Relaxed))
+        let func = {
+            let guard = ::_HOTSWAP_RUNTIME::$pointer_ident.read();
+            match *guard {
+                Some(ref arc) => arc.clone(),
+                None => panic!("Hotswapped function `{}` called before macro invocation!", $pointer_name)
+            }
         };
 
-        func($arg_idents)
+        func($input_idents)
     }).unwrap())
 }
 
-pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Expr> {
+pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Expr> {
     let mut ref_updaters = Vec::new();
 
     // Create one statement per hotswapped function, each
     // statement will update its global variable to point
-    // to the latest dynamic address.
-    for hotswap_fn in hotswap_fns.iter() {
-        let name = &hotswap_fn.name;
-        let global_ident = pointer_ident(name);
+    // to the latest dynamic address, and save the previous
+    // reference so it can be used for refcounting.
+    for fn_info in hotswap_fns.iter() {
+        let pointer_name = &fn_info.name;
+        let pointer_ident = pointer_ident(pointer_name);
+        let input_types = comma_separated_tokens(cx, &fn_info.input_types);
+        let output_type = &fn_info.output_type;
 
         let stmt = quote_stmt!(cx, {
-            use std::sync::atomic::Ordering;
+            let fn_address =
+                *lib.get::<fn($input_types) -> $output_type>($pointer_name.as_bytes())
+                .unwrap().deref();
 
-            let fn_address = *lib.get::<fn()>($name.as_bytes()).unwrap().deref();
-            ::_HOTSWAP_RUNTIME::$global_ident.store(fn_address as usize, Ordering::Relaxed);
+            let mut pointer_guard = ::_HOTSWAP_RUNTIME::$pointer_ident.write();
+            let new_ref = Some(Arc::new(fn_address));
+            let prev_ref = mem::replace(&mut *pointer_guard, new_ref);
+
+            if let Some(ref mut lib) = current_lib {
+                if let Some(arc) = prev_ref {
+                    lib.add_ref(arc);
+                }
+            }
         }).unwrap();
 
         ref_updaters.push(stmt);
@@ -84,13 +155,15 @@ pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -
     let dylib_name = dylib_name_template.replace("{}", "");
 
     let block = quote_expr!(cx, {
-        use std::ops::Deref;
-        use std::thread;
-        use std::fs;
+        use ::std::{fs, mem, thread};
+        use ::std::env::current_exe;
+        use ::std::ops::Deref;
+        use ::std::sync::Arc;
 
-        use libloading::Library;
+        use ::hotswap::libloading::Library;
+        use ::hotswap::parking_lot::Mutex;
 
-        use std::env::current_exe;
+        use ::_HOTSWAP_RUNTIME::RefManager;
 
         let exe = current_exe().unwrap();
         let dir = exe.parent().unwrap();
@@ -102,7 +175,13 @@ pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -
 
         let mut last_modified = fs::metadata(&dylib_file).unwrap().modified().unwrap();
 
-        let reload_dylib = move |dylib_num| {
+        // Keep a list of all the old libs so we can refcount and drop as needed.
+        let old_libs: Arc<Mutex<Vec<RefManager>>> = Arc::new(Mutex::new(Vec::new()));
+        let old_libs_move = old_libs.clone();
+
+        let mut current_lib: Option<RefManager> = None;
+
+        let mut reload_dylib = move |dylib_num| {
             // Windows locks the dynamic library once it is loaded, so
             // I'm creating a copy for now.
             let copy_name = format!($dylib_name_template, dylib_num);
@@ -118,9 +197,15 @@ pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -
             // Inline the function reference updaters.
             $ref_updaters
 
-            // TODO: unload unnused library and delete dynamic library copy.
-            // FIXME: leaking memory for now.
-            std::mem::forget(lib);
+            // This should happen after the ref_updaters run, otherwise
+            // references to the previous library functions will be added
+            // to this RefManager.
+            let new_lib = Some(RefManager::new(lib));
+            let old_lib = mem::replace(&mut current_lib, new_lib);
+
+            if let Some(lib) = old_lib {
+                old_libs.lock().push(lib);
+            }
         };
 
         reload_dylib(0);
@@ -130,6 +215,17 @@ pub fn create_macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -
 
             loop {
                 thread::sleep(std::time::Duration::from_millis(5000));
+
+                // Check if any of the currently loaded libraries can
+                // be dropped, if so, drop them.
+                {
+                    let mut old_libs_move = old_libs_move.lock();
+                    for i in (0..old_libs_move.len()).rev() {
+                        if old_libs_move[i].should_drop() {
+                            old_libs_move.remove(i);
+                        }
+                    }
+                }
 
                 // TODO: use some filesystem notification crate
                 // so it reloads as soon as the file changes.
