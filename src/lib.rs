@@ -1,4 +1,4 @@
-#![feature(quote, plugin_registrar, rustc_private, box_syntax, stmt_expr_attributes)]
+#![feature(quote, arc_counts, plugin_registrar, rustc_private, box_syntax, stmt_expr_attributes)]
 
 extern crate syntax;
 extern crate rustc_plugin;
@@ -25,8 +25,9 @@ use std::rc::Rc;
 
 use std::mem;
 
+pub mod runtime;
+mod generator;
 mod util;
-mod runtime;
 
 use util::syntax::get_fn_info;
 use util::rustc::*;
@@ -85,11 +86,6 @@ impl MultiItemModifier for HotswapHeaderExtension {
 
                 item.node = ItemKind::Mod(match crate_type().as_ref() {
                     "bin" => {
-                        // Various features that are used in the runtime,
-                        // should probably make a function that adds them.
-                        item.attrs.push(quote_attr!(cx, #![feature(const_fn)]));
-                        item.attrs.push(quote_attr!(cx, #![feature(arc_counts)]));
-                        item.attrs.push(quote_attr!(cx, #![feature(drop_types_in_const)]));
                         let tmp = expand_bin_mod(cx, m, &mut hotswap_fns);
                         expand_bin_footer(cx, tmp, &mut hotswap_fns)
                     },
@@ -147,7 +143,7 @@ impl TTMacroExpander for HotswapMacroExtension {
             unimplemented!();
         }
 
-        MacEager::expr(runtime::macro_expansion(cx, &hotswap_fns))
+        MacEager::expr(generator::macro_expansion(cx, &hotswap_fns))
     }
 }
 
@@ -156,6 +152,7 @@ impl TTMacroExpander for HotswapMacroExtension {
 fn expand_lib_attrs(cx: &mut ExtCtxt, mut attrs: Vec<Attribute>) -> Vec<Attribute> {
     attrs.insert(0, quote_attr!(cx, #![allow(unused_imports)]));
     attrs.insert(0, quote_attr!(cx, #![allow(dead_code)]));
+    attrs.insert(0, quote_attr!(cx, #![allow(unused_features)]));
     attrs
 }
 
@@ -228,7 +225,7 @@ fn expand_bin_footer(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnLi
     m.items.insert(0, quote_item!(cx, #[allow(plugin_as_library)] extern crate hotswap;).unwrap());
 
     // Create the mod where the function pointers are located.
-    m.items.push(runtime::hotswap_mod(cx, hotswap_fns));
+    m.items.push(generator::hotswap_mod(cx, hotswap_fns));
 
     m
 }
@@ -238,7 +235,7 @@ fn expand_bin_fn(cx: &mut ExtCtxt, mut item: Item, hotswap_fns: &mut HotswapFnLi
         let fn_info = get_fn_info(cx, &item);
 
         if let ItemKind::Fn(_, _, _, _, _, ref mut block) = item.node {
-            mem::replace(block, runtime::fn_body(cx, &fn_info));
+            mem::replace(block, generator::fn_body(cx, &fn_info));
         }
 
         hotswap_fns.push(fn_info);
