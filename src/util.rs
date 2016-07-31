@@ -1,10 +1,11 @@
 pub mod syntax {
-    use syntax::ast::{FnDecl, FunctionRetTy, Ident, Item, ItemKind, PatKind, TokenTree, Ty};
+    use syntax::ast::{FnDecl, FunctionRetTy, Ident, Item, ItemKind, PatKind, Ty};
     use syntax::codemap;
     use syntax::ext::base::ExtCtxt;
     use syntax::ext::quote::rt::ToTokens;
     use syntax::parse::token;
     use syntax::ptr::P;
+    use syntax::tokenstream::TokenTree;
 
     use ::HotswapFnInfo;
 

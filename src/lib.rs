@@ -11,7 +11,7 @@ pub extern crate parking_lot;
 use rustc_plugin::registry::Registry;
 
 use syntax::abi::Abi;
-use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, TokenTree, Ty, Visibility};
+use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Ty, Visibility};
 use syntax::attr;
 use syntax::codemap::Span;
 use syntax::ext::base::{Annotatable, ExtCtxt, TTMacroExpander, MacEager, MacResult, MultiItemModifier};
@@ -19,6 +19,7 @@ use syntax::ext::base::SyntaxExtension::{MultiModifier, NormalTT};
 use syntax::feature_gate::AttributeType;
 use syntax::parse::token::intern;
 use syntax::ptr::P;
+use syntax::tokenstream::TokenTree;
 
 use std::cell::RefCell;
 use std::rc::Rc;
