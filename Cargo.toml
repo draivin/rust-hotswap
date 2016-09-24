@@ -9,7 +9,3 @@ license = "MIT"
 [lib]
 name = "hotswap"
 plugin = true
-
-[dependencies]
-libloading = "0.2.*"
-parking_lot = {version = "0.2.*", features = ["nightly"]}

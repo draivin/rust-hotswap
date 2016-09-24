@@ -8,8 +8,8 @@ use ::util::rustc::{crate_name};
 use ::util::syntax::comma_separated_tokens;
 
 
-// Creates a module with a static pointer for each hotswapped function.
-pub fn hotswap_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {
+// Creates a module with the runtime structs and a static pointer for each hotswapped function.
+pub fn runtime_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {
     let mut static_items = Vec::new();
 
     for hotswap_fn in hotswap_fns {
@@ -30,7 +30,7 @@ pub fn hotswap_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {
         #[allow(dead_code)]
         mod _HOTSWAP_RUNTIME {
             use ::std::sync::Arc;
-            use ::hotswap::parking_lot::RwLock;
+            use ::hotswap_runtime::parking_lot::RwLock;
 
             $static_items
         }
@@ -106,10 +106,9 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
         use ::std::ops::Deref;
         use ::std::sync::Arc;
 
-        use ::hotswap::libloading::Library;
-        use ::hotswap::parking_lot::Mutex;
-
-        use ::hotswap::runtime::RefManager;
+        use ::hotswap_runtime::libloading::Library;
+        use ::hotswap_runtime::parking_lot::Mutex;
+        use ::hotswap_runtime::RefManager;
 
         let exe = current_exe().unwrap();
         let dir = exe.parent().unwrap();

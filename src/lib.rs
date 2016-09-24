@@ -1,12 +1,7 @@
-#![feature(quote, arc_counts, plugin_registrar, rustc_private, box_syntax, stmt_expr_attributes)]
+#![feature(quote, plugin_registrar, rustc_private, box_syntax, stmt_expr_attributes)]
 
 extern crate syntax;
 extern crate rustc_plugin;
-
-// Pub export those crates so we can later import them
-// in the users code.
-pub extern crate libloading;
-pub extern crate parking_lot;
 
 use rustc_plugin::registry::Registry;
 
@@ -26,8 +21,7 @@ use std::rc::Rc;
 
 use std::mem;
 
-pub mod runtime;
-mod generator;
+mod codegen;
 mod util;
 
 use util::syntax::get_fn_info;
@@ -44,11 +38,11 @@ use util::rustc::*;
 // hotswapped functions, otherwise they will call a null pointer.
 
 #[plugin_registrar]
-pub fn registrar(reg: &mut Registry) {
-    let data = Rc::new(RefCell::new(Vec::new()));
+pub fn plugin_registrar(reg: &mut Registry) {
+    let fn_list = Rc::new(RefCell::new(Vec::new()));
 
-    let header_extension = HotswapHeaderExtension { data: data.clone() };
-    let macro_extension = HotswapMacroExtension { data: data.clone() };
+    let header_extension = HotswapHeaderExtension { fn_list: fn_list.clone() };
+    let macro_extension = HotswapMacroExtension { fn_list: fn_list.clone() };
 
     reg.register_syntax_extension(intern("hotswap_header"),
                                   MultiModifier(box header_extension));
@@ -69,11 +63,11 @@ pub struct HotswapFnInfo {
 type HotswapFnList = Vec<HotswapFnInfo>;
 
 struct HotswapHeaderExtension {
-    data: Rc<RefCell<HotswapFnList>>
+    fn_list: Rc<RefCell<HotswapFnList>>
 }
 
 struct HotswapMacroExtension {
-    data: Rc<RefCell<HotswapFnList>>
+    fn_list: Rc<RefCell<HotswapFnList>>
 }
 
 impl MultiItemModifier for HotswapHeaderExtension {
@@ -83,7 +77,7 @@ impl MultiItemModifier for HotswapHeaderExtension {
         let annotatable = if let Annotatable::Item(item) = annotatable {
             let mut item = item.unwrap();
             if let ItemKind::Mod(m) = item.node {
-                let mut hotswap_fns = self.data.borrow_mut();
+                let mut hotswap_fns = self.fn_list.borrow_mut();
 
                 item.node = ItemKind::Mod(match crate_type().as_ref() {
                     "bin" => {
@@ -120,7 +114,7 @@ impl MultiItemModifier for HotswapHeaderExtension {
 
 impl TTMacroExpander for HotswapMacroExtension {
     fn expand(&self, cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
-        let hotswap_fns = self.data.borrow();
+        let hotswap_fns = self.fn_list.borrow();
 
         // Macro in lib build shouldn't be expanded, as the
         // crate dependencies aren't imported, the length is
@@ -144,12 +138,12 @@ impl TTMacroExpander for HotswapMacroExtension {
             unimplemented!();
         }
 
-        MacEager::expr(generator::macro_expansion(cx, &hotswap_fns))
+        MacEager::expr(codegen::macro_expansion(cx, &hotswap_fns))
     }
 }
 
-// Ignore dead code in the lib build, probably there will be a lot of it
-// starting at the `main` function.
+// Ignore dead code in the lib build, probably there will be a lot of it,
+// including the `main` function.
 fn expand_lib_attrs(cx: &mut ExtCtxt, mut attrs: Vec<Attribute>) -> Vec<Attribute> {
     attrs.insert(0, quote_attr!(cx, #![allow(unused_imports)]));
     attrs.insert(0, quote_attr!(cx, #![allow(dead_code)]));
@@ -223,10 +217,11 @@ fn expand_bin_mod(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList)
 }
 
 fn expand_bin_footer(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
-    m.items.insert(0, quote_item!(cx, #[allow(plugin_as_library)] extern crate hotswap;).unwrap());
+    // Add crate containing the external dependencies of the runtime.
+    m.items.insert(0, quote_item!(cx, extern crate hotswap_runtime;).unwrap());
 
     // Create the mod where the function pointers are located.
-    m.items.push(generator::hotswap_mod(cx, hotswap_fns));
+    m.items.push(codegen::runtime_mod(cx, hotswap_fns));
 
     m
 }
@@ -236,7 +231,7 @@ fn expand_bin_fn(cx: &mut ExtCtxt, mut item: Item, hotswap_fns: &mut HotswapFnLi
         let fn_info = get_fn_info(cx, &item);
 
         if let ItemKind::Fn(_, _, _, _, _, ref mut block) = item.node {
-            mem::replace(block, generator::fn_body(cx, &fn_info));
+            mem::replace(block, codegen::fn_body(cx, &fn_info));
         }
 
         hotswap_fns.push(fn_info);

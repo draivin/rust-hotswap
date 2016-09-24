@@ -1,0 +1,14 @@
+[package]
+name = "hotswap-runtime"
+version = "0.1.0"
+authors = ["Ian Ornelas <ian.orn@gmail.com>"]
+description = "Crate encapsulating the runtime dependencies of hotswap"
+repository = "https://github.com/draivin/rust-hotswap"
+license = "MIT"
+
+[lib]
+name = "hotswap_runtime"
+
+[dependencies]
+libloading = "0.3"
+parking_lot = {version = "0.3", features = ["nightly"]}

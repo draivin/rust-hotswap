@@ -1,9 +1,13 @@
-use ::std::sync::Arc;
-use ::std::sync::atomic::{AtomicPtr, Ordering};
-use ::libloading::Library;
+ #![feature(arc_counts)]
 
-// Here are the containers used for the imported libraries
+pub extern crate libloading;
+pub extern crate parking_lot;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicPtr, Ordering};
+use libloading::Library;
+
+// Those are the containers used for the imported libraries.
 trait FnArc: Send + Sync {
     fn ref_count(&self) -> usize;
 }
@@ -54,4 +58,4 @@ impl Drop for RefManager {
             Box::from_raw(self.lib.load(Ordering::Relaxed));
         }
     }
-}
+        }
