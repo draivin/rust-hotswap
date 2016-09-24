@@ -4,7 +4,7 @@ use syntax::parse::token::intern;
 use syntax::ptr::P;
 
 use ::HotswapFnInfo;
-use ::util::rustc::{crate_name};
+use ::util::rustc::crate_name;
 use ::util::syntax::comma_separated_tokens;
 
 
@@ -34,7 +34,8 @@ pub fn runtime_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {
 
             $static_items
         }
-    ).unwrap()
+    )
+        .unwrap()
 }
 
 pub fn fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
@@ -82,7 +83,8 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
                     lib.add_ref(arc);
                 }
             }
-        }).unwrap();
+        })
+            .unwrap();
 
         ref_updaters.push(stmt);
     }
@@ -186,7 +188,8 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
                 }
             }
         });
-    }).unwrap();
+    })
+        .unwrap();
 
     P(block)
 }

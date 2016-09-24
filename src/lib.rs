@@ -9,7 +9,8 @@ use syntax::abi::Abi;
 use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Ty, Visibility};
 use syntax::attr;
 use syntax::codemap::Span;
-use syntax::ext::base::{Annotatable, ExtCtxt, TTMacroExpander, MacEager, MacResult, MultiItemModifier};
+use syntax::ext::base::{Annotatable, ExtCtxt, TTMacroExpander, MacEager, MacResult,
+                        MultiItemModifier};
 use syntax::ext::base::SyntaxExtension::{MultiModifier, NormalTT};
 use syntax::feature_gate::AttributeType;
 use syntax::parse::token::intern;
@@ -63,16 +64,20 @@ pub struct HotswapFnInfo {
 type HotswapFnList = Vec<HotswapFnInfo>;
 
 struct HotswapHeaderExtension {
-    fn_list: Rc<RefCell<HotswapFnList>>
+    fn_list: Rc<RefCell<HotswapFnList>>,
 }
 
 struct HotswapMacroExtension {
-    fn_list: Rc<RefCell<HotswapFnList>>
+    fn_list: Rc<RefCell<HotswapFnList>>,
 }
 
 impl MultiItemModifier for HotswapHeaderExtension {
-    fn expand(&self, cx: &mut ExtCtxt, _: Span, _: &MetaItem,
-              annotatable: Annotatable) -> Vec<Annotatable> {
+    fn expand(&self,
+              cx: &mut ExtCtxt,
+              _: Span,
+              _: &MetaItem,
+              annotatable: Annotatable)
+              -> Vec<Annotatable> {
 
         let annotatable = if let Annotatable::Item(item) = annotatable {
             let mut item = item.unwrap();
@@ -83,10 +88,8 @@ impl MultiItemModifier for HotswapHeaderExtension {
                     "bin" => {
                         let tmp = expand_bin_mod(cx, m, &mut hotswap_fns);
                         expand_bin_footer(cx, tmp, &mut hotswap_fns)
-                    },
-                    "dylib" => {
-                        expand_lib_mod(cx, m)
-                    },
+                    }
+                    "dylib" => expand_lib_mod(cx, m),
                     _ => {
                         unimplemented!();
                     }
@@ -154,24 +157,27 @@ fn expand_lib_attrs(cx: &mut ExtCtxt, mut attrs: Vec<Attribute>) -> Vec<Attribut
 // The lib code marks the hotswapped functions as `no_mangle` and
 // exports them.
 fn expand_lib_mod(cx: &mut ExtCtxt, mut m: Mod) -> Mod {
-    m.items = m.items.into_iter().map(|item| {
-        let mut item = item.unwrap();
+    m.items = m.items
+        .into_iter()
+        .map(|item| {
+            let mut item = item.unwrap();
 
-        item.node = match item.node {
-            ItemKind::Mod(m) => {
-                // Only functions in public mods can be exported.
-                item.vis = Visibility::Public;
-                ItemKind::Mod(expand_lib_mod(cx, m))
-            },
-            _ => item.node
-        };
+            item.node = match item.node {
+                ItemKind::Mod(m) => {
+                    // Only functions in public mods can be exported.
+                    item.vis = Visibility::Public;
+                    ItemKind::Mod(expand_lib_mod(cx, m))
+                }
+                _ => item.node,
+            };
 
-        if attr::contains_name(&item.attrs, "hotswap") {
-            P(expand_lib_fn(cx, item))
-        } else {
-            P(item)
-        }
-    }).collect();
+            if attr::contains_name(&item.attrs, "hotswap") {
+                P(expand_lib_fn(cx, item))
+            } else {
+                P(item)
+            }
+        })
+        .collect();
 
     m
 }
@@ -195,23 +201,26 @@ fn expand_lib_fn(cx: &mut ExtCtxt, mut item: Item) -> Item {
 // The bin code imports required crates and rewrites the hotswapped
 // functions body so it executes the dynamic library functions instead.
 fn expand_bin_mod(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
-    m.items = m.items.into_iter().map(|item| {
-        let mut item = item.unwrap();
+    m.items = m.items
+        .into_iter()
+        .map(|item| {
+            let mut item = item.unwrap();
 
-        item.node = match item.node {
-            ItemKind::Mod(m) => {
-                item.vis = Visibility::Public;
-                ItemKind::Mod(expand_bin_mod(cx, m, hotswap_fns))
-            },
-            _ => item.node
-        };
+            item.node = match item.node {
+                ItemKind::Mod(m) => {
+                    item.vis = Visibility::Public;
+                    ItemKind::Mod(expand_bin_mod(cx, m, hotswap_fns))
+                }
+                _ => item.node,
+            };
 
-        if attr::contains_name(&item.attrs, "hotswap") {
-            P(expand_bin_fn(cx, item, hotswap_fns))
-        } else {
-            P(item)
-        }
-    }).collect();
+            if attr::contains_name(&item.attrs, "hotswap") {
+                P(expand_bin_fn(cx, item, hotswap_fns))
+            } else {
+                P(item)
+            }
+        })
+        .collect();
 
     m
 }

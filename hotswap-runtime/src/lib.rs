@@ -22,7 +22,7 @@ pub struct RefManager {
     lib: AtomicPtr<Library>,
     // Contains a copy of every arc to a function in this library
     // which is no longer stored in the global pointers.
-    refs: Vec<Box<FnArc>>
+    refs: Vec<Box<FnArc>>,
 }
 
 impl RefManager {
@@ -32,7 +32,7 @@ impl RefManager {
 
         RefManager {
             lib: ptr,
-            refs: Vec::new()
+            refs: Vec::new(),
         }
     }
 
@@ -58,4 +58,4 @@ impl Drop for RefManager {
             Box::from_raw(self.lib.load(Ordering::Relaxed));
         }
     }
-        }
+}
