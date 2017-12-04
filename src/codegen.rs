@@ -1,11 +1,10 @@
-use syntax::ast::{Block, Expr, Ident, Item};
+use syntax::ast::{Block, Expr, Ident, Item, Name};
 use syntax::ext::base::ExtCtxt;
-use syntax::parse::token::intern;
 use syntax::ptr::P;
 
-use ::HotswapFnInfo;
-use ::util::rustc::crate_name;
-use ::util::syntax::comma_separated_tokens;
+use HotswapFnInfo;
+use util::rustc::crate_name;
+use util::syntax::comma_separated_tokens;
 
 
 // Creates a module with the runtime structs and a static pointer for each hotswapped function.
@@ -34,8 +33,7 @@ pub fn runtime_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {
 
             $static_items
         }
-    )
-        .unwrap()
+    ).unwrap()
 }
 
 pub fn fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
@@ -72,7 +70,7 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
         let stmt = quote_stmt!(cx, {
             let fn_address =
                 *lib.get::<fn($input_types) -> $output_type>($pointer_name.as_bytes())
-                .unwrap().deref();
+                .expect("Can't find function").deref();
 
             let mut pointer_guard = ::_HOTSWAP_RUNTIME::$pointer_ident.write();
             let new_ref = Some(Arc::new(fn_address));
@@ -83,8 +81,7 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
                     lib.add_ref(arc);
                 }
             }
-        })
-            .unwrap();
+        }).unwrap();
 
         ref_updaters.push(stmt);
     }
@@ -112,15 +109,20 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
         use ::hotswap_runtime::parking_lot::Mutex;
         use ::hotswap_runtime::RefManager;
 
-        let exe = current_exe().unwrap();
-        let dir = exe.parent().unwrap();
+        let exe = current_exe().expect("Can't find current executable name");
+        let dir = exe.parent().expect("Can't find executable path");
 
         // TODO: warn if dynamic library was not found.
         let tmp_path = dir.join("hotswap-dylib");
         let dylib_file = dir.join($dylib_name);
         let dylib_move = dylib_file.clone();
 
-        let mut last_modified = fs::metadata(&dylib_file).unwrap().modified().unwrap();
+        let mut last_modified = fs::metadata(&dylib_file).expect(
+            &format!(
+                "Can't find metadata for {} - did you add a `[lib]` section to your Cargo.toml?",
+                dylib_file.to_string_lossy()
+            )
+        ).modified().unwrap();
 
         // Keep a list of all the old libs so we can refcount and drop as needed.
         let old_libs: Arc<Mutex<Vec<RefManager>>> = Arc::new(Mutex::new(Vec::new()));
@@ -134,12 +136,18 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
             let copy_name = format!($dylib_name_template, dylib_num);
 
             let mut dylib_copy = tmp_path.clone();
-            fs::create_dir_all(&tmp_path).unwrap();
+            fs::create_dir_all(&tmp_path).expect(
+                "Couldn't create temp folder for the new dynamic library"
+            );
 
             dylib_copy.push(copy_name);
-            fs::copy(&dylib_move, &dylib_copy).unwrap();
+            fs::copy(&dylib_move, &dylib_copy).expect(
+                "Can't copy the dynamic library, maybe the destination has too-restrictive \
+                 permissions"
+            );
 
-            let lib = Library::new(dylib_copy.to_str().unwrap()).expect("Failed to load library");
+            let lib = Library::new(dylib_copy.to_string_lossy().as_ref())
+                .expect("Failed to load library");
 
             // Inline the function reference updaters.
             $ref_updaters
@@ -177,7 +185,11 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
                 // TODO: use some filesystem notification crate
                 // so it reloads as soon as the file changes.
                 let modified = match fs::metadata(&dylib_file) {
-                    Ok(metadata) => metadata.modified().unwrap(),
+                    Ok(metadata) => metadata.modified().expect(
+                        "Can't get the metadata's modified time on this platform, hot reloading \
+                         will be horribly inefficient. If you want to use hot-reloading anyway, \
+                         file a PR to do something sensible on this platform."
+                    ),
                     _ => continue,
                 };
 
@@ -188,12 +200,11 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
                 }
             }
         });
-    })
-        .unwrap();
+    }).unwrap();
 
     P(block)
 }
 
 fn pointer_ident(fn_name: &str) -> Ident {
-    Ident::with_empty_ctxt(intern(&("_HOTSWAP_".to_string() + fn_name)))
+    Ident::with_empty_ctxt(Name::intern(&("_HOTSWAP_".to_string() + fn_name)))
 }
