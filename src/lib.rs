@@ -41,8 +41,8 @@ use util::rustc::*;
 pub fn plugin_registrar(reg: &mut Registry) {
     let fn_list = Rc::new(RefCell::new(Vec::new()));
 
-    let header_extension = HotswapHeaderExtension { fn_list: fn_list.clone() };
-    let macro_extension = HotswapMacroExtension { fn_list: fn_list.clone() };
+    let header_extension = HotswapHeaderExtension { fn_list: Rc::clone(&fn_list) };
+    let macro_extension = HotswapMacroExtension { fn_list: Rc::clone(&fn_list) };
 
     reg.register_syntax_extension(
         Name::intern("hotswap_header"),
@@ -99,7 +99,7 @@ impl MultiItemModifier for HotswapHeaderExtension {
                     }
                     "dylib" => expand_lib_mod(cx, m),
                     _ => {
-                        unimplemented!();
+                        unimplemented!()
                     }
                 });
 
@@ -142,8 +142,7 @@ impl TTMacroExpander for HotswapMacroExtension {
             }));
         }
 
-        // Macro should be empty.
-        if tt.len() > 0 {
+        if !tt.is_empty() {
             // TODO: proper warning when user doesn't leave the macro
             // empty.
             unimplemented!();
