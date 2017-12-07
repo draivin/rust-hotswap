@@ -1,19 +1,22 @@
 ## rust-hotswap
-A library for hotswapping running code with minimal effort, requires a nightly rust build.
+A library for hotswapping running code with minimal effort, requires a nightly
+rust build.
 
 Beware that the library is a prototype for now, and it may crash frequently.
 
 ## Usage
 - Add the `hotswap` and `hotswap-runtime` dependencies to your `Cargo.toml`.
 - Add a `dylib` build with the same project name and path to your `Cargo.toml`.
-- Add the `#![feature(plugin, const_fn, drop_types_in_const)]` feature gates.
+- Add the `#![feature(plugin, const_fn)]` feature gates.
 - Import the plugin `#![plugin(hotswap)]`.
 - Annotate the functions you want to hotswap with the `#[hotswap]` modifier.
 - Add `#![hotswap_header]` attribute to the top of your program.
-- Add `unsafe { hotswap_start!() }` to the entry point of your program, before you call any hotswapped functions.
+- Add `unsafe { hotswap_start!() }` to the entry point of your program, before
+  you call any hotswapped functions.
 
 ## Current Limitations
 - Changing hotswapped function signatures **WILL** result in a segfault.
+  - Maybe this can be fixed by storing the types as metadata.
 - Requires user code to use some non-local feature gates.
 
 ## Example
@@ -25,6 +28,8 @@ name = "hotswapdemo"
 version = "0.1.0"
 
 [lib]
+# This must be the same as the package name (with hyphens replaced with
+# underscores). Anything else will cause an error at runtime.
 name = "hotswapdemo"
 crate-type = ["dylib"]
 path = "src/main.rs"
@@ -37,7 +42,7 @@ hotswap-runtime = "*"
 ```rust
 // main.rs
 
-#![feature(plugin, const_fn, drop_types_in_const)]
+#![feature(plugin, const_fn)]
 #![plugin(hotswap)]
 #![hotswap_header]
 
@@ -50,7 +55,7 @@ fn test(test: i32) -> () {
 }
 
 fn main() {
-    unsafe{ hotswap_start!() }
+    unsafe { hotswap_start!() }
 
     let mut i = 1;
     loop {
@@ -62,9 +67,10 @@ fn main() {
 
 ```
 
-And that is it!
+That's it!
 
-From there you can
+From there you can run the binary
+
 ```
 > cargo run
      Running `target/debug/hotswapdemo`
@@ -73,11 +79,15 @@ Foo: 2
 Foo: 3
 ```
 
-once it is running, you can edit the printing code, e.g.
+Then, once it is running, you can edit the printing code, e.g.
+
 ```rust
     println!("Bar: {} :)", test);
 ```
-and once you recompile the code on another terminal (or on the same one using background)
+
+Once you recompile the code on another terminal (or on the same one using
+background), you'll see the changes!
+
 ```
 > cargo build --lib
    Compiling hotswapdemo v0.1.0 [...]
@@ -87,4 +97,5 @@ Foo: 8
 Bar: 9 :)
 Bar: 10 :)
 ```
-the running code will update without restarting the binary or losing state!
+
+The running code will update without restarting the binary or losing state!

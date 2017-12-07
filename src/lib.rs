@@ -6,16 +6,15 @@ extern crate rustc_plugin;
 use rustc_plugin::registry::Registry;
 
 use syntax::abi::Abi;
-use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Ty, Visibility};
+use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Ty, Visibility, Name};
 use syntax::attr;
 use syntax::codemap::Span;
 use syntax::ext::base::{Annotatable, ExtCtxt, TTMacroExpander, MacEager, MacResult,
                         MultiItemModifier};
 use syntax::ext::base::SyntaxExtension::{MultiModifier, NormalTT};
 use syntax::feature_gate::AttributeType;
-use syntax::parse::token::intern;
 use syntax::ptr::P;
-use syntax::tokenstream::TokenTree;
+use syntax::tokenstream::TokenStream;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -45,10 +44,19 @@ pub fn plugin_registrar(reg: &mut Registry) {
     let header_extension = HotswapHeaderExtension { fn_list: fn_list.clone() };
     let macro_extension = HotswapMacroExtension { fn_list: fn_list.clone() };
 
-    reg.register_syntax_extension(intern("hotswap_header"),
-                                  MultiModifier(box header_extension));
-    reg.register_syntax_extension(intern("hotswap_start"),
-                                  NormalTT(box macro_extension, None, false));
+    reg.register_syntax_extension(
+        Name::intern("hotswap_header"),
+        MultiModifier(box header_extension),
+    );
+    reg.register_syntax_extension(
+        Name::intern("hotswap_start"),
+        NormalTT {
+            expander: box macro_extension,
+            def_info: None,
+            allow_internal_unsafe: false,
+            allow_internal_unstable: false,
+        },
+    );
 
     reg.register_attribute("hotswap".to_string(), AttributeType::Whitelisted);
 }
@@ -72,13 +80,13 @@ struct HotswapMacroExtension {
 }
 
 impl MultiItemModifier for HotswapHeaderExtension {
-    fn expand(&self,
-              cx: &mut ExtCtxt,
-              _: Span,
-              _: &MetaItem,
-              annotatable: Annotatable)
-              -> Vec<Annotatable> {
-
+    fn expand(
+        &self,
+        cx: &mut ExtCtxt,
+        _: Span,
+        _: &MetaItem,
+        annotatable: Annotatable,
+    ) -> Vec<Annotatable> {
         let annotatable = if let Annotatable::Item(item) = annotatable {
             let mut item = item.unwrap();
             if let ItemKind::Mod(m) = item.node {
@@ -116,7 +124,7 @@ impl MultiItemModifier for HotswapHeaderExtension {
 }
 
 impl TTMacroExpander for HotswapMacroExtension {
-    fn expand(&self, cx: &mut ExtCtxt, _: Span, tt: &[TokenTree]) -> Box<MacResult> {
+    fn expand(&self, cx: &mut ExtCtxt, _: Span, tt: TokenStream) -> Box<MacResult> {
         let hotswap_fns = self.fn_list.borrow();
 
         // Macro in lib build shouldn't be expanded, as the
@@ -227,7 +235,11 @@ fn expand_bin_mod(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList)
 
 fn expand_bin_footer(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
     // Add crate containing the external dependencies of the runtime.
-    m.items.insert(0, quote_item!(cx, extern crate hotswap_runtime;).unwrap());
+    m.items.insert(
+        0,
+        quote_item!(cx, extern crate hotswap_runtime;)
+            .unwrap(),
+    );
 
     // Create the mod where the function pointers are located.
     m.items.push(codegen::runtime_mod(cx, hotswap_fns));

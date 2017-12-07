@@ -10,5 +10,5 @@ license = "MIT"
 name = "hotswap_runtime"
 
 [dependencies]
-libloading = "0.3"
-parking_lot = {version = "0.3", features = ["nightly"]}
+libloading = "0.4"
+parking_lot = { version = "0.5.3", features = ["nightly"] }
