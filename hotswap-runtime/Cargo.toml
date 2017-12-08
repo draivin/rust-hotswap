@@ -1,6 +1,6 @@
 [package]
 name = "hotswap-runtime"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Ian Ornelas <ian.orn@gmail.com>"]
 description = "Crate encapsulating the runtime dependencies of hotswap"
 repository = "https://github.com/draivin/rust-hotswap"
