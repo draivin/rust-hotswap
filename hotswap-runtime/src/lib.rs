@@ -1,4 +1,4 @@
- #![feature(arc_counts)]
+#![feature(arc_counts)]
 
 pub extern crate libloading;
 pub extern crate parking_lot;

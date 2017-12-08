@@ -18,7 +18,8 @@ pub fn runtime_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {
 
         let item = quote_item!(cx,
             #[allow(non_upper_case_globals)]
-            pub static $pointer_ident: RwLock<Option<Arc<fn($input_types) -> $output_types>>> = RwLock::new(None);
+            pub static $pointer_ident: RwLock<Option<Arc<fn($input_types) -> $output_types>>> =
+                RwLock::new(None);
         ).unwrap();
 
         static_items.push(item);
@@ -46,7 +47,10 @@ pub fn fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
             let guard = ::_HOTSWAP_RUNTIME::$pointer_ident.read();
             match *guard {
                 Some(ref arc) => arc.clone(),
-                None => panic!("Hotswapped function `{}` called before macro invocation!", $pointer_name)
+                None => panic!(
+                    "Hotswapped function `{}` called before `hotswap_start!()` invocation!",
+                    $pointer_name
+                )
             }
         };
 
@@ -70,7 +74,10 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
         let stmt = quote_stmt!(cx, {
             let fn_address =
                 *lib.get::<fn($input_types) -> $output_type>($pointer_name.as_bytes())
-                .expect("Can't find function").deref();
+                .expect(&format!(
+                    "Couldn't find function `{}` on hotswapped library",
+                    $pointer_name
+                )).deref();
 
             let mut pointer_guard = ::_HOTSWAP_RUNTIME::$pointer_ident.write();
             let new_ref = Some(Arc::new(fn_address));
@@ -92,9 +99,7 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
     #[cfg(target_os = "macos")]
     let dylib_name_template = crate_name() + "{}.dylib";
 
-    #[cfg(any(target_os = "linux",
-              target_os = "freebsd",
-              target_os = "dragonfly"))]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly"))]
     let dylib_name_template = "lib".to_string() + &crate_name() + "{}.so";
 
     let dylib_name = dylib_name_template.replace("{}", "");
@@ -109,8 +114,8 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
         use ::hotswap_runtime::parking_lot::Mutex;
         use ::hotswap_runtime::RefManager;
 
-        let exe = current_exe().expect("Can't find current executable name");
-        let dir = exe.parent().expect("Can't find executable path");
+        let exe = current_exe().expect("Couldn't find current executable name");
+        let dir = exe.parent().expect("Couldn't find executable path");
 
         // TODO: warn if dynamic library was not found.
         let tmp_path = dir.join("hotswap-dylib");
@@ -119,7 +124,7 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
 
         let mut last_modified = fs::metadata(&dylib_file).expect(
             &format!(
-                "Can't find metadata for {} - did you add a `[lib]` section to your Cargo.toml?",
+                "Couldn't find metadata for {} - did you add a `[lib]` section to your Cargo.toml?",
                 dylib_file.to_string_lossy()
             )
         ).modified().unwrap();
@@ -142,7 +147,7 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
 
             dylib_copy.push(copy_name);
             fs::copy(&dylib_move, &dylib_copy).expect(
-                "Can't copy the dynamic library, maybe the destination has too-restrictive \
+                "Couldn't copy the dynamic library, maybe the destination has too-restrictive \
                  permissions"
             );
 
@@ -186,7 +191,7 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
                 // so it reloads as soon as the file changes.
                 let modified = match fs::metadata(&dylib_file) {
                     Ok(metadata) => metadata.modified().expect(
-                        "Can't get the metadata's modified time on this platform, hot reloading \
+                        "Couldn't get the metadata's modified time on this platform, hot reloading \
                          will be horribly inefficient. If you want to use hot-reloading anyway, \
                          file a PR to do something sensible on this platform."
                     ),

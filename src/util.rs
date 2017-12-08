@@ -7,7 +7,7 @@ pub mod syntax {
     use syntax::ptr::P;
     use syntax::tokenstream::TokenTree;
 
-    use ::HotswapFnInfo;
+    use HotswapFnInfo;
 
     pub fn get_fn_info(cx: &mut ExtCtxt, item: &Item) -> HotswapFnInfo {
         if let ItemKind::Fn(ref fn_decl, _, _, _, _, _) = item.node {
@@ -23,7 +23,8 @@ pub mod syntax {
     }
 
     pub fn comma_separated_tokens<T: ToTokens>(cx: &mut ExtCtxt, entries: &[T]) -> Vec<TokenTree> {
-        entries.iter()
+        entries
+            .iter()
             .map(|t| t.to_tokens(cx))
             .collect::<Vec<_>>()
             .join(&TokenTree::Token(codemap::DUMMY_SP, token::Comma))
@@ -38,14 +39,14 @@ pub mod syntax {
             .iter()
             .filter_map(|arg| {
                 let mut ident = None;
-                arg.pat.walk(&mut |pat| {
-                    if let PatKind::Ident(_, ref span_ident, _) = pat.node {
+                arg.pat.walk(
+                    &mut |pat| if let PatKind::Ident(_, ref span_ident, _) = pat.node {
                         ident = Some(span_ident.node);
                         false
                     } else {
                         true
-                    }
-                });
+                    },
+                );
                 ident
             })
             .collect()

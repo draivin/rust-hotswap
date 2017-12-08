@@ -1,16 +1,16 @@
 #![feature(quote, plugin_registrar, rustc_private, box_syntax, stmt_expr_attributes)]
 
-extern crate syntax;
 extern crate rustc_plugin;
+extern crate syntax;
 
 use rustc_plugin::registry::Registry;
 
 use syntax::abi::Abi;
-use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Ty, Visibility, Name};
+use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Name, Ty, Visibility};
 use syntax::attr;
 use syntax::codemap::Span;
-use syntax::ext::base::{Annotatable, ExtCtxt, TTMacroExpander, MacEager, MacResult,
-                        MultiItemModifier};
+use syntax::ext::base::{Annotatable, ExtCtxt, MacEager, MacResult, MultiItemModifier,
+                        TTMacroExpander};
 use syntax::ext::base::SyntaxExtension::{MultiModifier, NormalTT};
 use syntax::feature_gate::AttributeType;
 use syntax::ptr::P;
@@ -35,14 +35,19 @@ use util::rustc::*;
 // variable.
 
 // The user should have a `hotswap_start!` macro before using any
-// hotswapped functions, otherwise they will call a null pointer.
+// hotswapped functions, so the library can initialize all the
+// necessary stuff.
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
     let fn_list = Rc::new(RefCell::new(Vec::new()));
 
-    let header_extension = HotswapHeaderExtension { fn_list: Rc::clone(&fn_list) };
-    let macro_extension = HotswapMacroExtension { fn_list: Rc::clone(&fn_list) };
+    let header_extension = HotswapHeaderExtension {
+        fn_list: Rc::clone(&fn_list),
+    };
+    let macro_extension = HotswapMacroExtension {
+        fn_list: Rc::clone(&fn_list),
+    };
 
     reg.register_syntax_extension(
         Name::intern("hotswap_header"),
@@ -98,9 +103,7 @@ impl MultiItemModifier for HotswapHeaderExtension {
                         expand_bin_footer(cx, tmp, &mut hotswap_fns)
                     }
                     "dylib" => expand_lib_mod(cx, m),
-                    _ => {
-                        unimplemented!()
-                    }
+                    _ => unimplemented!(),
                 });
 
                 item.attrs = match crate_type().as_ref() {
@@ -114,7 +117,6 @@ impl MultiItemModifier for HotswapHeaderExtension {
                 // used outside a module.
                 unimplemented!();
             }
-
         } else {
             annotatable
         };
@@ -234,11 +236,8 @@ fn expand_bin_mod(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList)
 
 fn expand_bin_footer(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
     // Add crate containing the external dependencies of the runtime.
-    m.items.insert(
-        0,
-        quote_item!(cx, extern crate hotswap_runtime;)
-            .unwrap(),
-    );
+    m.items
+        .insert(0, quote_item!(cx, extern crate hotswap_runtime;).unwrap());
 
     // Create the mod where the function pointers are located.
     m.items.push(codegen::runtime_mod(cx, hotswap_fns));
