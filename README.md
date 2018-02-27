@@ -99,3 +99,7 @@ Bar: 10 :)
 ```
 
 The running code will update without restarting the binary or losing state!
+
+# See Also
+
+* https://github.com/emoon/dynamic_reload
