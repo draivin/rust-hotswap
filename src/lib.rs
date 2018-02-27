@@ -6,7 +6,7 @@ extern crate syntax;
 use rustc_plugin::registry::Registry;
 
 use syntax::abi::Abi;
-use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Name, Ty, Visibility};
+use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Name, Ty, VisibilityKind};
 use syntax::attr;
 use syntax::codemap::Span;
 use syntax::ext::base::{Annotatable, ExtCtxt, MacEager, MacResult, MultiItemModifier,
@@ -93,7 +93,7 @@ impl MultiItemModifier for HotswapHeaderExtension {
         annotatable: Annotatable,
     ) -> Vec<Annotatable> {
         let annotatable = if let Annotatable::Item(item) = annotatable {
-            let mut item = item.unwrap();
+            let mut item = item.into_inner();
             if let ItemKind::Mod(m) = item.node {
                 let mut hotswap_fns = self.fn_list.borrow_mut();
 
@@ -169,12 +169,12 @@ fn expand_lib_mod(cx: &mut ExtCtxt, mut m: Mod) -> Mod {
     m.items = m.items
         .into_iter()
         .map(|item| {
-            let mut item = item.unwrap();
+            let mut item = item.into_inner();
 
             item.node = match item.node {
                 ItemKind::Mod(m) => {
                     // Only functions in public mods can be exported.
-                    item.vis = Visibility::Public;
+                    item.vis.node = VisibilityKind::Public;
                     ItemKind::Mod(expand_lib_mod(cx, m))
                 }
                 _ => item.node,
@@ -196,7 +196,7 @@ fn expand_lib_fn(cx: &mut ExtCtxt, mut item: Item) -> Item {
         // Make lib functions extern and no mangle so they can
         // be imported from the runtime.
         item.attrs.push(quote_attr!(cx, #![no_mangle]));
-        item.vis = Visibility::Public;
+        item.vis.node = VisibilityKind::Public;
 
         mem::replace(abi, Abi::Rust);
     } else {
@@ -213,11 +213,11 @@ fn expand_bin_mod(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList)
     m.items = m.items
         .into_iter()
         .map(|item| {
-            let mut item = item.unwrap();
+            let mut item = item.into_inner();
 
             item.node = match item.node {
                 ItemKind::Mod(m) => {
-                    item.vis = Visibility::Public;
+                    item.vis.node = VisibilityKind::Public;
                     ItemKind::Mod(expand_bin_mod(cx, m, hotswap_fns))
                 }
                 _ => item.node,

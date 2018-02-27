@@ -55,7 +55,7 @@ pub fn fn_body(cx: &mut ExtCtxt, fn_info: &HotswapFnInfo) -> P<Block> {
         };
 
         func($input_idents)
-    }).unwrap())
+    }).into_inner())
 }
 
 pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Expr> {
@@ -205,7 +205,7 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
                 }
             }
         });
-    }).unwrap();
+    }).into_inner();
 
     P(block)
 }
