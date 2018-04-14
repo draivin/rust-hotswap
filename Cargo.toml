@@ -1,6 +1,6 @@
 [package]
 name = "hotswap"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Ian Ornelas <ian.orn@gmail.com>"]
 description = "Easy code swapping in running executables"
 repository = "https://github.com/draivin/rust-hotswap"

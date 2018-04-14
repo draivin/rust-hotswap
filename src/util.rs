@@ -40,8 +40,8 @@ pub mod syntax {
             .filter_map(|arg| {
                 let mut ident = None;
                 arg.pat.walk(
-                    &mut |pat| if let PatKind::Ident(_, ref span_ident, _) = pat.node {
-                        ident = Some(span_ident.node);
+                    &mut |pat| if let PatKind::Ident(_, span_ident, _) = pat.node {
+                        ident = Some(span_ident);
                         false
                     } else {
                         true

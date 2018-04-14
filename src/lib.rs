@@ -60,6 +60,7 @@ pub fn plugin_registrar(reg: &mut Registry) {
             def_info: None,
             allow_internal_unsafe: false,
             allow_internal_unstable: false,
+            unstable_feature: None
         },
     );
 
