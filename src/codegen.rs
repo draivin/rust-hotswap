@@ -2,10 +2,10 @@ use syntax::ast::{Block, Expr, Ident, Item, Name};
 use syntax::ext::base::ExtCtxt;
 use syntax::ptr::P;
 
-use HotswapFnInfo;
 use util::rustc::crate_name;
 use util::syntax::comma_separated_tokens;
 
+use HotswapFnInfo;
 
 // Creates a module with the runtime structs and a static pointer for each hotswapped function.
 pub fn runtime_mod(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Item> {

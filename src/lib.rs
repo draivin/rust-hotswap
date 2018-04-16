@@ -9,9 +9,9 @@ use syntax::abi::Abi;
 use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Name, Ty, VisibilityKind};
 use syntax::attr;
 use syntax::codemap::Span;
+use syntax::ext::base::SyntaxExtension::{MultiModifier, NormalTT};
 use syntax::ext::base::{Annotatable, ExtCtxt, MacEager, MacResult, MultiItemModifier,
                         TTMacroExpander};
-use syntax::ext::base::SyntaxExtension::{MultiModifier, NormalTT};
 use syntax::feature_gate::AttributeType;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenStream;
@@ -24,19 +24,7 @@ use std::mem;
 mod codegen;
 mod util;
 
-use util::syntax::get_fn_info;
-use util::rustc::*;
-
-// The plugin works by changing the function code depending on the
-// build type(bin or lib), when building a lib, it exports all
-// functions that are marked as `hotswap`, when building a bin,
-// it completely replaces the function body so that the function
-// will instead call a dynamic function that is saved in a global
-// variable.
-
-// The user should have a `hotswap_start!` macro before using any
-// hotswapped functions, so the library can initialize all the
-// necessary stuff.
+use util::{mod_walk, rustc::*, syntax::get_fn_info};
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
@@ -49,10 +37,16 @@ pub fn plugin_registrar(reg: &mut Registry) {
         fn_list: Rc::clone(&fn_list),
     };
 
+    // This macro is used to walk around the program modules and modify
+    // the function code depending on the build type(bin or lib).
     reg.register_syntax_extension(
         Name::intern("hotswap_header"),
         MultiModifier(box header_extension),
     );
+
+    // The user should have a `hotswap_start!` macro before using any
+    // hotswapped functions, so the library can initialize all the
+    // necessary stuff.
     reg.register_syntax_extension(
         Name::intern("hotswap_start"),
         NormalTT {
@@ -60,13 +54,14 @@ pub fn plugin_registrar(reg: &mut Registry) {
             def_info: None,
             allow_internal_unsafe: false,
             allow_internal_unstable: false,
-            unstable_feature: None
+            unstable_feature: None,
         },
     );
 
+    // This macro is used only as a tag so the hotswap header can find out
+    // which functions should be hotswapped.
     reg.register_attribute("hotswap".to_string(), AttributeType::Whitelisted);
 }
-
 
 pub struct HotswapFnInfo {
     name: String,
@@ -85,6 +80,9 @@ struct HotswapMacroExtension {
     fn_list: Rc<RefCell<HotswapFnList>>,
 }
 
+// When building a lib, we should export all functions that are tagged as `hotswap`,
+// when building a bin, we should completely replace function bodies so it calls
+// a dynamically loaded one that is stored in a global structure.
 impl MultiItemModifier for HotswapHeaderExtension {
     fn expand(
         &self,
@@ -93,13 +91,13 @@ impl MultiItemModifier for HotswapHeaderExtension {
         _: &MetaItem,
         annotatable: Annotatable,
     ) -> Vec<Annotatable> {
-        let annotatable = if let Annotatable::Item(item) = annotatable {
+        if let Annotatable::Item(item) = annotatable {
             let mut item = item.into_inner();
-            if let ItemKind::Mod(m) = item.node {
-                let mut hotswap_fns = self.fn_list.borrow_mut();
 
+            if let ItemKind::Mod(m) = item.node {
                 item.node = ItemKind::Mod(match crate_type().as_ref() {
                     "bin" => {
+                        let mut hotswap_fns = self.fn_list.borrow_mut();
                         let tmp = expand_bin_mod(cx, m, &mut hotswap_fns);
                         expand_bin_footer(cx, tmp, &mut hotswap_fns)
                     }
@@ -107,22 +105,20 @@ impl MultiItemModifier for HotswapHeaderExtension {
                     _ => unimplemented!(),
                 });
 
+                // Ignore dead code in the lib build, probably there will be a lot
+                // of it, including the `main` function.
                 item.attrs = match crate_type().as_ref() {
                     "dylib" => expand_lib_attrs(cx, item.attrs),
                     _ => item.attrs,
                 };
 
-                Annotatable::Item(P(item))
-            } else {
-                // TODO: proper warning when the header annotation is
-                // used outside a module.
-                unimplemented!();
+                return vec![Annotatable::Item(P(item))];
             }
-        } else {
-            annotatable
-        };
+        }
 
-        vec![annotatable]
+        // TODO: proper warning when the header annotation is
+        // used outside a module.
+        unimplemented!();
     }
 }
 
@@ -130,16 +126,14 @@ impl TTMacroExpander for HotswapMacroExtension {
     fn expand(&self, cx: &mut ExtCtxt, _: Span, tt: TokenStream) -> Box<MacResult> {
         let hotswap_fns = self.fn_list.borrow();
 
-        // Macro in lib build shouldn't be expanded, as the
-        // crate dependencies aren't imported, the length is
-        // also 0 when there is no hotswap_header.
-        if hotswap_fns.len() == 0 {
-            // Just some arbitrary unsafe code that does nothing so the
-            // compiler doesn't complain about unnused unsafe blocks.
-            //
-            // Also happens to stop the build immediately on the lib
-            // build if the user haven't wrapped the macro in unsafe,
-            // instead of building the lib and stopping on the bin build.
+        // It will be empty when there are no functions tagged as `hotswap`,
+        // when `hotswap_header` was no called, and on lib builds, in all
+        // those cases we shouldn't expand the hotswap initialization.
+        if hotswap_fns.is_empty() {
+            // Some arbitrary unsafe code to prevent unnunsed unsafe
+            // warnings, also will stop the build during the lib stage,
+            // if the user hasn't wrapped the macro in unsafe, instead of
+            // building the lib and stopping on the bin.
             return MacEager::expr(quote_expr!(cx, {
                 &*(0 as *const usize);
             }));
@@ -155,8 +149,6 @@ impl TTMacroExpander for HotswapMacroExtension {
     }
 }
 
-// Ignore dead code in the lib build, probably there will be a lot of it,
-// including the `main` function.
 fn expand_lib_attrs(cx: &mut ExtCtxt, mut attrs: Vec<Attribute>) -> Vec<Attribute> {
     attrs.insert(0, quote_attr!(cx, #![allow(unused_imports)]));
     attrs.insert(0, quote_attr!(cx, #![allow(dead_code)]));
@@ -164,32 +156,19 @@ fn expand_lib_attrs(cx: &mut ExtCtxt, mut attrs: Vec<Attribute>) -> Vec<Attribut
     attrs
 }
 
-// The lib code marks the hotswapped functions as `no_mangle` and
-// exports them.
-fn expand_lib_mod(cx: &mut ExtCtxt, mut m: Mod) -> Mod {
-    m.items = m.items
-        .into_iter()
-        .map(|item| {
-            let mut item = item.into_inner();
-
-            item.node = match item.node {
-                ItemKind::Mod(m) => {
-                    // Only functions in public mods can be exported.
-                    item.vis.node = VisibilityKind::Public;
-                    ItemKind::Mod(expand_lib_mod(cx, m))
-                }
-                _ => item.node,
-            };
-
-            if attr::contains_name(&item.attrs, "hotswap") {
-                P(expand_lib_fn(cx, item))
-            } else {
-                P(item)
+fn expand_lib_mod(cx: &mut ExtCtxt, m: Mod) -> Mod {
+    mod_walk(m, &mut |item| {
+        if attr::contains_name(&item.attrs, "hotswap") {
+            match item.node {
+                ItemKind::Fn(..) => return expand_lib_fn(cx, item),
+                // TODO: write proper warning.
+                _ => println!("warning: hotswap only works on functions"),
             }
-        })
-        .collect();
-
-    m
+            expand_lib_fn(cx, item)
+        } else {
+            item
+        }
+    })
 }
 
 fn expand_lib_fn(cx: &mut ExtCtxt, mut item: Item) -> Item {
@@ -200,65 +179,42 @@ fn expand_lib_fn(cx: &mut ExtCtxt, mut item: Item) -> Item {
         item.vis.node = VisibilityKind::Public;
 
         mem::replace(abi, Abi::Rust);
-    } else {
-        // TODO: write proper warning.
-        println!("warning: hotswap only works on functions");
     }
 
     item
 }
 
-// The bin code imports required crates and rewrites the hotswapped
-// functions body so it executes the dynamic library functions instead.
-fn expand_bin_mod(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
-    m.items = m.items
-        .into_iter()
-        .map(|item| {
-            let mut item = item.into_inner();
-
-            item.node = match item.node {
-                ItemKind::Mod(m) => {
-                    item.vis.node = VisibilityKind::Public;
-                    ItemKind::Mod(expand_bin_mod(cx, m, hotswap_fns))
-                }
-                _ => item.node,
-            };
-
-            if attr::contains_name(&item.attrs, "hotswap") {
-                P(expand_bin_fn(cx, item, hotswap_fns))
-            } else {
-                P(item)
+fn expand_bin_mod(cx: &mut ExtCtxt, m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
+    mod_walk(m, &mut |item: Item| {
+        if attr::contains_name(&item.attrs, "hotswap") {
+            match item.node {
+                ItemKind::Fn(..) => return expand_bin_fn(cx, item, hotswap_fns),
+                // TODO: write proper warning.
+                _ => println!("warning: hotswap only works on functions"),
             }
-        })
-        .collect();
+        }
 
-    m
-}
-
-fn expand_bin_footer(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
-    // Add crate containing the external dependencies of the runtime.
-    m.items
-        .insert(0, quote_item!(cx, extern crate hotswap_runtime;).unwrap());
-
-    // Create the mod where the function pointers are located.
-    m.items.push(codegen::runtime_mod(cx, hotswap_fns));
-
-    m
+        item
+    })
 }
 
 fn expand_bin_fn(cx: &mut ExtCtxt, mut item: Item, hotswap_fns: &mut HotswapFnList) -> Item {
-    if let ItemKind::Fn(..) = item.node {
-        let fn_info = get_fn_info(cx, &item);
+    let fn_info = get_fn_info(cx, &item);
 
-        if let ItemKind::Fn(_, _, _, _, _, ref mut block) = item.node {
-            mem::replace(block, codegen::fn_body(cx, &fn_info));
-        }
-
-        hotswap_fns.push(fn_info);
-    } else {
-        // TODO: write proper warning.
-        println!("warning: hotswap only works on functions");
+    if let ItemKind::Fn(_, _, _, _, _, ref mut block) = item.node {
+        mem::replace(block, codegen::fn_body(cx, &fn_info));
     }
 
+    hotswap_fns.push(fn_info);
     item
+}
+
+// After all the functions to be hotswapped are found, we insert a custom module
+// at the end of the users main file, in which we store the external function
+// pointers during runtime.
+fn expand_bin_footer(cx: &mut ExtCtxt, mut m: Mod, hotswap_fns: &mut HotswapFnList) -> Mod {
+    m.items
+        .insert(0, quote_item!(cx, extern crate hotswap_runtime;).unwrap());
+    m.items.push(codegen::runtime_mod(cx, hotswap_fns));
+    m
 }

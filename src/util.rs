@@ -1,3 +1,34 @@
+use syntax::{ast::{Item, ItemKind, Mod, VisibilityKind},
+             ptr::P};
+
+pub fn mod_walk(mut m: Mod, item_map: &mut FnMut(Item) -> Item) -> Mod {
+    m.items = m.items
+        .into_iter()
+        .map(|item| {
+            let mut item = item.into_inner();
+            let mut should_map = false;
+
+            item.node = match item.node {
+                ItemKind::Mod(m) => {
+                    item.vis.node = VisibilityKind::Public;
+                    ItemKind::Mod(mod_walk(m, item_map))
+                }
+                _ => {
+                    should_map = true;
+                    item.node
+                }
+            };
+
+            if should_map {
+                P(item_map(item))
+            } else {
+                P(item)
+            }
+        })
+        .collect();
+
+    m
+}
 pub mod syntax {
     use syntax::ast::{FnDecl, FunctionRetTy, Ident, Item, ItemKind, PatKind, Ty};
     use syntax::codemap;
@@ -39,14 +70,14 @@ pub mod syntax {
             .iter()
             .filter_map(|arg| {
                 let mut ident = None;
-                arg.pat.walk(
-                    &mut |pat| if let PatKind::Ident(_, span_ident, _) = pat.node {
+                arg.pat.walk(&mut |pat| {
+                    if let PatKind::Ident(_, span_ident, _) = pat.node {
                         ident = Some(span_ident);
                         false
                     } else {
                         true
-                    },
-                );
+                    }
+                });
                 ident
             })
             .collect()
@@ -66,17 +97,9 @@ pub mod syntax {
 
 pub mod rustc {
     pub fn arg(arg_name: &str) -> String {
-        let mut args = ::std::env::args();
-        loop {
-            match args.next() {
-                Some(arg) => {
-                    if arg == arg_name {
-                        return args.next().unwrap();
-                    }
-                }
-                None => panic!("could not find arg"),
-            }
-        }
+        let args = ::std::env::args();
+        let mut args = args.skip_while(|arg| arg != arg_name);
+        args.nth(1).expect("Could not find arg")
     }
 
     pub fn crate_type() -> String {

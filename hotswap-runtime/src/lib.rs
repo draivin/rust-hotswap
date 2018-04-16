@@ -3,8 +3,9 @@
 pub extern crate libloading;
 pub extern crate parking_lot;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::Arc;
+
 use libloading::Library;
 
 // Those are the containers used for the imported libraries.
