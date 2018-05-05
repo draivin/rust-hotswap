@@ -1,11 +1,12 @@
 #![feature(quote, plugin_registrar, rustc_private, box_syntax, stmt_expr_attributes)]
 
 extern crate rustc_plugin;
+extern crate rustc_target;
 extern crate syntax;
 
 use rustc_plugin::registry::Registry;
 
-use syntax::abi::Abi;
+use rustc_target::spec::abi::Abi;
 use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Name, Ty, VisibilityKind};
 use syntax::attr;
 use syntax::codemap::Span;
