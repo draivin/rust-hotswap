@@ -8,7 +8,7 @@
 [travis_badge]: https://travis-ci.org/draivin/rust-hotswap.svg?branch=master
 [appveyor_badge]: https://ci.appveyor.com/api/projects/status/github/draivin/rust-hotswap?svg=true
 
-[crate]: https://crates.io/crates/rust-hotswap
+[crate]: https://crates.io/crates/hotswap
 [Travis CI]: https://travis-ci.org/draivin/rust-hotswap
 [Appveyor CI]: https://ci.appveyor.com/project/draivin/rust-hotswap
 
