@@ -11,10 +11,10 @@ matrix:
     - env: target=x86_64-unknown-linux-musl
 
     # OSX
-    # - env: target=i686-apple-darwin
-    #   os: osx
-    # - env: target=x86_64-apple-darwin
-    #   os: osx
+    - env: target=i686-apple-darwin
+      os: osx
+    - env: target=x86_64-apple-darwin
+      os: osx
 
 install:
   - rustup self update

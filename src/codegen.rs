@@ -151,11 +151,26 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
                 "Couldn't create temp folder for the new dynamic library"
             );
 
-            dylib_copy.push(copy_name);
+            dylib_copy.push(&copy_name);
             fs::copy(&dylib_move, &dylib_copy).expect(
                 "Couldn't copy the dynamic library, maybe the destination has too-restrictive \
                  permissions"
             );
+
+            // macOS tries to be smart and prevent dylib reloading when the lib being loaded
+            // shares the same id as a previous loaded library, as a workaround we change the
+            // id of newly build libraries right after copying.
+            #[cfg(target_os="macos")]
+            {
+                use std::process::{Stdio, Command};
+
+                Command::new("install_name_tool")
+                    .args(&["-id", &copy_name, dylib_copy.to_str().unwrap()])
+                    .stderr(Stdio::null())
+                    .output()
+                    .expect("Error when trying to run `install_name_tool`, hotswap will not \
+                             work properly in  macOS systems in which it is not available.");
+            }
 
             let lib = Library::new(dylib_copy.to_string_lossy().as_ref())
                 .expect("Failed to load library");
