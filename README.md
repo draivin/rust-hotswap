@@ -6,7 +6,7 @@
 
 [crates_badge]: https://img.shields.io/crates/v/hotswap.svg
 [travis_badge]: https://travis-ci.org/draivin/rust-hotswap.svg?branch=master
-[appveyor_badge]: https://ci.appveyor.com/api/projects/status/github/draivin/rust-hotswap?svg=true
+[appveyor_badge]: https://ci.appveyor.com/api/projects/status/github/draivin/rust-hotswap?svg=true&branch=master
 
 [crate]: https://crates.io/crates/hotswap
 [Travis CI]: https://travis-ci.org/draivin/rust-hotswap
