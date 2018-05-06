@@ -97,7 +97,7 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
     let dylib_name_template = crate_name() + "{}.dll";
 
     #[cfg(target_os = "macos")]
-    let dylib_name_template = crate_name() + "{}.dylib";
+    let dylib_name_template = "lib".to_string() + &crate_name() + "{}.dylib";
 
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly"))]
     let dylib_name_template = "lib".to_string() + &crate_name() + "{}.so";
@@ -117,14 +117,20 @@ pub fn macro_expansion(cx: &mut ExtCtxt, hotswap_fns: &[HotswapFnInfo]) -> P<Exp
         let exe = current_exe().expect("Couldn't find current executable name");
         let dir = exe.parent().expect("Couldn't find executable path");
 
-        // TODO: warn if dynamic library was not found.
         let tmp_path = dir.join("hotswap-dylib");
         let dylib_file = dir.join($dylib_name);
         let dylib_move = dylib_file.clone();
 
+        if !dylib_file.exists() {
+            panic!(
+                "Couldn't find file {} - did you add a `[lib]` section to your Cargo.toml?",
+                dylib_file.to_string_lossy()
+            )
+        }
+
         let mut last_modified = fs::metadata(&dylib_file).expect(
             &format!(
-                "Couldn't find metadata for {} - did you add a `[lib]` section to your Cargo.toml?",
+                "Couldn't read metadata for {}",
                 dylib_file.to_string_lossy()
             )
         ).modified().unwrap();
