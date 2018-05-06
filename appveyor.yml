@@ -1,0 +1,37 @@
+environment:
+  matrix:
+
+### MSVC Toolchains ###
+    - channel: nightly
+      target: x86_64-pc-windows-msvc
+
+    - channel: nightly
+      target: i686-pc-windows-msvc
+
+### GNU Toolchains ###
+    - channel: nightly
+      target: x86_64-pc-windows-gnu
+
+    - channel: nightly
+      target: i686-pc-windows-gnu
+
+## Install Script ##
+install:
+  - appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
+  - rustup-init -yv --default-toolchain %channel% --default-host %target%
+  - set PATH=%PATH%;%USERPROFILE%\.cargo\bin
+  - rustc -vV
+  - cargo -vV
+
+cache:
+  - C:\Users\appveyor\.cargo\registry
+
+branches:
+  only:
+    - master
+
+## Build Script ##
+build: false
+
+test_script:
+  - cargo test --verbose

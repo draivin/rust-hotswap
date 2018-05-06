@@ -1,0 +1,19 @@
+[package]
+name = "hotswap_test"
+version = "0.1.0"
+authors = ["Ian Ornelas <ian.orn@gmail.com>"]
+
+[features]
+default = []
+hotswap_toggle = []
+
+[lib]
+name = "hotswap_test"
+crate-type = ["dylib"]
+path = "src/main.rs"
+
+[dependencies.hotswap]
+path = "../../"
+
+[dependencies.hotswap-runtime]
+path = "../../hotswap-runtime"
