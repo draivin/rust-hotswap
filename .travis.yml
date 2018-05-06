@@ -1,0 +1,34 @@
+dist: trusty
+language: rust
+rust: nightly
+sudo: required
+
+matrix:
+  include:
+    # Linux
+    - env: target=i686-unknown-linux-musl
+    - env: target=x86_64-unknown-linux-gnu
+    - env: target=x86_64-unknown-linux-musl
+
+    # OSX
+    # - env: target=i686-apple-darwin
+    #   os: osx
+    # - env: target=x86_64-apple-darwin
+    #   os: osx
+
+install:
+  - rustup self update
+  - rustup target add $target || true
+  - rustc -vV
+  - cargo -vV
+
+cache: cargo
+before_cache:
+  - chmod -R a+r $HOME/.cargo
+
+branches:
+  only:
+    - master
+
+script:
+  - cargo test --verbose --target=$target -- --nocapture
