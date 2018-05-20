@@ -1,5 +1,5 @@
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
-use std::io::{Write, BufReader, BufRead};
 use std::thread::sleep;
 use std::time::Duration;
 

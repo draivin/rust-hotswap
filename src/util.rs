@@ -1,8 +1,10 @@
-use syntax::{ast::{Item, ItemKind, Mod, VisibilityKind},
-             ptr::P};
+use syntax::{
+    ast::{Item, ItemKind, Mod, VisibilityKind}, ptr::P,
+};
 
 pub fn mod_walk(mut m: Mod, item_map: &mut FnMut(Item) -> Item) -> Mod {
-    m.items = m.items
+    m.items = m
+        .items
         .into_iter()
         .map(|item| {
             let mut item = item.into_inner();
