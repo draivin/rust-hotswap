@@ -16,6 +16,7 @@ use syntax::ext::base::{Annotatable, ExtCtxt, MacEager, MacResult, MultiItemModi
 use syntax::feature_gate::AttributeType;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenStream;
+use syntax::edition::Edition;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -56,6 +57,7 @@ pub fn plugin_registrar(reg: &mut Registry) {
             allow_internal_unsafe: false,
             allow_internal_unstable: false,
             unstable_feature: None,
+            edition: Edition::Edition2015
         },
     );
 
