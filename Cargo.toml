@@ -1,6 +1,6 @@
 [package]
 name = "hotswap"
-version = "0.4.2"
+version = "0.5.0"
 authors = ["Ian Ornelas <ian.orn@gmail.com>"]
 readme = "README.md"
 description = "Easy code swapping in running executables"
