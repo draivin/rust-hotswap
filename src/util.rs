@@ -41,7 +41,7 @@ pub mod syntax {
     use HotswapFnInfo;
 
     pub fn get_fn_info(cx: &mut ExtCtxt, item: &Item) -> HotswapFnInfo {
-        if let ItemKind::Fn(ref fn_decl, _, _, _, _, _) = item.node {
+        if let ItemKind::Fn(ref fn_decl, _, _, _) = item.node {
             HotswapFnInfo {
                 name: ident_name(&item.ident),
                 input_types: arg_types(fn_decl),

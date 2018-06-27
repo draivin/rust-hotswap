@@ -175,13 +175,13 @@ fn expand_lib_mod(cx: &mut ExtCtxt, m: Mod) -> Mod {
 }
 
 fn expand_lib_fn(cx: &mut ExtCtxt, mut item: Item) -> Item {
-    if let ItemKind::Fn(_, _, _, ref mut abi, _, _) = item.node {
+    if let ItemKind::Fn(_, ref mut header, _, _) = item.node {
         // Make lib functions extern and no mangle so they can
         // be imported from the runtime.
         item.attrs.push(quote_attr!(cx, #![no_mangle]));
         item.vis.node = VisibilityKind::Public;
 
-        mem::replace(abi, Abi::Rust);
+        mem::replace(&mut header.abi, Abi::Rust);
     }
 
     item
@@ -204,7 +204,7 @@ fn expand_bin_mod(cx: &mut ExtCtxt, m: Mod, hotswap_fns: &mut HotswapFnList) -> 
 fn expand_bin_fn(cx: &mut ExtCtxt, mut item: Item, hotswap_fns: &mut HotswapFnList) -> Item {
     let fn_info = get_fn_info(cx, &item);
 
-    if let ItemKind::Fn(_, _, _, _, _, ref mut block) = item.node {
+    if let ItemKind::Fn(_, _, _, ref mut block) = item.node {
         mem::replace(block, codegen::fn_body(cx, &fn_info));
     }
 
