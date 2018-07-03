@@ -10,13 +10,14 @@ use rustc_target::spec::abi::Abi;
 use syntax::ast::{Attribute, Ident, Item, ItemKind, MetaItem, Mod, Name, Ty, VisibilityKind};
 use syntax::attr;
 use syntax::codemap::Span;
+use syntax::edition::Edition;
 use syntax::ext::base::SyntaxExtension::{MultiModifier, NormalTT};
-use syntax::ext::base::{Annotatable, ExtCtxt, MacEager, MacResult, MultiItemModifier,
-                        TTMacroExpander};
+use syntax::ext::base::{
+    Annotatable, ExtCtxt, MacEager, MacResult, MultiItemModifier, TTMacroExpander,
+};
 use syntax::feature_gate::AttributeType;
 use syntax::ptr::P;
 use syntax::tokenstream::TokenStream;
-use syntax::edition::Edition;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -57,7 +58,7 @@ pub fn plugin_registrar(reg: &mut Registry) {
             allow_internal_unsafe: false,
             allow_internal_unstable: false,
             unstable_feature: None,
-            edition: Edition::Edition2015
+            edition: Edition::Edition2015,
         },
     );
 
